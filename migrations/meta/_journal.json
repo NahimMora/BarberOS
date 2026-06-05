@@ -8,6 +8,20 @@
       "when": 1780638945890,
       "tag": "0000_daily_marrow",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1780688968590,
+      "tag": "0001_smart_thing",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1780689000000,
+      "tag": "0002_rls_complete",
+      "breakpoints": false
     }
   ]
 }

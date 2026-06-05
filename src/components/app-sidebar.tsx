@@ -6,8 +6,8 @@ type Role = 'admin' | 'receptionist' | 'barber'
 
 const navItems = [
   { href: '/dashboard', label: 'Inicio', icon: Home, roles: ['admin', 'receptionist', 'barber'] as Role[] },
-  { href: '/agenda', label: 'Agenda', icon: CalendarDays, roles: ['admin', 'receptionist', 'barber'] as Role[], disabled: true },
-  { href: '/clientes', label: 'Clientes', icon: Users, roles: ['admin', 'receptionist', 'barber'] as Role[], disabled: true },
+  { href: '/agenda', label: 'Agenda', icon: CalendarDays, roles: ['admin', 'receptionist', 'barber'] as Role[] },
+  { href: '/clientes', label: 'Clientes', icon: Users, roles: ['admin', 'receptionist', 'barber'] as Role[] },
   { href: '/caja', label: 'Caja', icon: DollarSign, roles: ['admin', 'receptionist'] as Role[], disabled: true },
   { href: '/comisiones', label: 'Comisiones', icon: BarChart2, roles: ['admin'] as Role[], disabled: true },
 ]
