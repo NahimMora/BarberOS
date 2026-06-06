@@ -17,6 +17,13 @@ describe('serializeCsv', () => {
     expect(csv).toContain("'=1+1")
     expect(csv).toContain("'@SUM(A1:A2)")
   })
+
+  it('preserves signed numeric values', () => {
+    const csv = serializeCsv(['Diferencia'], [['-500.00'], ['+125.50']])
+
+    expect(csv).toContain('\r\n-500.00\r\n')
+    expect(csv).toContain('\r\n+125.50\r\n')
+  })
 })
 
 describe('serializeSpreadsheetXml', () => {

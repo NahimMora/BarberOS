@@ -6,6 +6,7 @@ export type SpreadsheetColumn = {
 }
 
 const FORMULA_PREFIX = /^[=+\-@]/
+const NUMERIC_VALUE = /^[+-]?\d+(?:\.\d+)?$/
 
 export function serializeCsv(headers: string[], rows: ExportCell[][]): string {
   const lines = [
@@ -70,7 +71,7 @@ function escapeCsvCell(value: ExportCell): string {
 }
 
 function neutralizeFormula(value: string): string {
-  return FORMULA_PREFIX.test(value) ? `'${value}` : value
+  return FORMULA_PREFIX.test(value) && !NUMERIC_VALUE.test(value) ? `'${value}` : value
 }
 
 function xmlCell(value: string, type: 'String' | 'Number' | 'DateTime'): string {
