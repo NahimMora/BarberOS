@@ -51,7 +51,10 @@ export async function GET(req: Request) {
     if (user.branchIds.length === 0) return NextResponse.json([])
     conditions.push(inArray(appointments.branchId, user.branchIds))
   }
-  if (status && ['scheduled', 'confirmed', 'in_progress', 'completed', 'cancelled', 'no_show'].includes(status)) {
+  if (status) {
+    if (!['scheduled', 'confirmed', 'in_progress', 'completed', 'cancelled', 'no_show'].includes(status)) {
+      return NextResponse.json({ error: 'Estado inválido' }, { status: 400 })
+    }
     conditions.push(eq(appointments.status, status as typeof appointments.status.enumValues[number]))
   }
   if (date) {
@@ -137,6 +140,34 @@ export async function POST(req: Request) {
   if (!barber) {
     return NextResponse.json({ error: 'Barbero no disponible en la sucursal' }, { status: 400 })
   }
+  const [settings] = await db
+    .select({ allowAnonymousWalkin: organizationSettings.allowAnonymousWalkin })
+    .from(organizationSettings)
+    .where(eq(organizationSettings.organizationId, user.organizationId))
+    .limit(1)
+  if (source === 'booked' && !clientId) {
+    return NextResponse.json({ error: 'Un turno agendado requiere cliente' }, { status: 400 })
+  }
+  if (source === 'walk_in' && !clientId && !settings?.allowAnonymousWalkin) {
+    return NextResponse.json({ error: 'Los walk-in anónimos no están habilitados' }, { status: 403 })
+  }
+  if (clientId) {
+    const [client] = await db
+      .select({ id: clients.id })
+      .from(clients)
+      .where(
+        and(
+          eq(clients.id, clientId),
+          eq(clients.organizationId, user.organizationId),
+          eq(clients.active, true),
+          isNull(clients.deletedAt),
+        ),
+      )
+      .limit(1)
+    if (!client) {
+      return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 400 })
+    }
+  }
 
   // Fetch services to compute end time
   const serviceRows = await db
@@ -146,6 +177,8 @@ export async function POST(req: Request) {
       and(
         eq(services.organizationId, user.organizationId),
         inArray(services.id, serviceIds),
+        eq(services.active, true),
+        isNull(services.deletedAt),
       ),
     )
 
@@ -199,6 +232,7 @@ export async function POST(req: Request) {
 
       await tx.insert(appointmentServices).values(
         serviceRows.map((s) => ({
+          organizationId: user.organizationId,
           appointmentId: appointment.id,
           serviceId: s.id,
           priceAtTime: s.price,

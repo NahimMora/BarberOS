@@ -8,6 +8,7 @@ import {
   timestamp,
   pgEnum,
   date,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { organizations } from './organizations'
@@ -40,7 +41,9 @@ export const barberProfiles = pgTable('barber_profiles', {
   deletedBy: uuid('deleted_by'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-})
+}, (table) => [
+  uniqueIndex('barber_profiles_user_id_idx').on(table.userId),
+])
 
 export type BarberProfile = typeof barberProfiles.$inferSelect
 export type NewBarberProfile = typeof barberProfiles.$inferInsert

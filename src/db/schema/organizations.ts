@@ -6,6 +6,7 @@ import {
   boolean,
   integer,
   timestamp,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 
@@ -28,7 +29,9 @@ export const organizationSettings = pgTable('organization_settings', {
   allowAnonymousWalkin: boolean('allow_anonymous_walkin').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-})
+}, (table) => [
+  uniqueIndex('organization_settings_organization_id_idx').on(table.organizationId),
+])
 
 export type Organization = typeof organizations.$inferSelect
 export type NewOrganization = typeof organizations.$inferInsert

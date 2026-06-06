@@ -11,6 +11,7 @@ import {
 } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { organizations } from './organizations'
+import { files } from './files'
 
 export const clients = pgTable('clients', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
@@ -25,6 +26,7 @@ export const clients = pgTable('clients', {
   cutPreferences: text('cut_preferences'),
   tags: text('tags').array(),
   extraProfile: jsonb('extra_profile'),
+  photoFileId: uuid('photo_file_id').references(() => files.id),
   consentData: boolean('consent_data').notNull().default(false),
   consentDataAt: timestamp('consent_data_at', { withTimezone: true }),
   consentWhatsapp: boolean('consent_whatsapp').notNull().default(false),

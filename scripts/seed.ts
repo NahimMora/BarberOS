@@ -33,7 +33,9 @@ const db = drizzle(sql)
 const DEMO_USERS = [
   { email: 'admin@demo.com', fullName: 'Admin Demo', role: 'admin' as const },
   { email: 'recep@demo.com', fullName: 'Recepcionista Demo', role: 'receptionist' as const },
+  { email: 'recep.norte@demo.com', fullName: 'Recepcionista Norte', role: 'receptionist' as const },
   { email: 'barbero@demo.com', fullName: 'Barbero Demo', role: 'barber' as const },
+  { email: 'barbero.norte@demo.com', fullName: 'Barbero Norte', role: 'barber' as const },
 ]
 
 const DEFAULT_PASSWORD = 'demo1234'
@@ -185,7 +187,7 @@ async function main() {
           userId,
           organizationId: org.id,
           commissionRate: '25.00',
-          displayColor: '#6366f1',
+          displayColor: u.email.includes('norte') ? '#b45309' : '#6366f1',
         })
         console.log(`  Created barber profile for: ${u.email}`)
       }
@@ -202,11 +204,11 @@ async function main() {
     const [existing] = await db
       .select()
       .from(userBranches)
-      .where(eq(userBranches.userId, userId))
+      .where(and(eq(userBranches.userId, userId), eq(userBranches.branchId, branchId)))
       .limit(1)
 
     if (!existing) {
-      await db.insert(userBranches).values({ userId, branchId })
+      await db.insert(userBranches).values({ organizationId: org.id, userId, branchId })
       console.log(`  Assigned ${email} → ${branchName}`)
     } else {
       console.log(`  Branch already assigned: ${email}`)
@@ -214,13 +216,17 @@ async function main() {
   }
 
   await assignBranch('barbero@demo.com', 'Centro')
+  await assignBranch('barbero.norte@demo.com', 'Norte')
   await assignBranch('recep@demo.com', 'Centro')
+  await assignBranch('recep.norte@demo.com', 'Norte')
 
   // --- FASE 1 DATA ---
 
   const barberoId = userIds['barbero@demo.com']
+  const barberoNorteId = userIds['barbero.norte@demo.com']
   const adminId = userIds['admin@demo.com']
   const centroBranchId = branchIds['Centro']
+  const norteBranchId = branchIds['Norte']
 
   // 6. Services
   console.log('\nSeeding services...')
@@ -298,15 +304,20 @@ async function main() {
 
   // 8. Barber schedules (Mon-Sat, 09:00-18:00)
   console.log('\nSeeding barber schedules...')
-  if (barberoId && centroBranchId) {
+  const scheduleTargets = [
+    { barberId: barberoId, branchId: centroBranchId },
+    { barberId: barberoNorteId, branchId: norteBranchId },
+  ].filter((target): target is { barberId: string; branchId: string } => Boolean(target.barberId && target.branchId))
+
+  for (const target of scheduleTargets) {
     for (let weekday = 1; weekday <= 6; weekday++) {
       const [existing] = await db
         .select()
         .from(barberSchedules)
         .where(
           and(
-            eq(barberSchedules.barberId, barberoId),
-            eq(barberSchedules.branchId, centroBranchId),
+            eq(barberSchedules.barberId, target.barberId),
+            eq(barberSchedules.branchId, target.branchId),
             eq(barberSchedules.weekday, weekday),
           ),
         )
@@ -315,8 +326,8 @@ async function main() {
       if (!existing) {
         await db.insert(barberSchedules).values({
           organizationId: org.id,
-          barberId: barberoId,
-          branchId: centroBranchId,
+          barberId: target.barberId,
+          branchId: target.branchId,
           weekday,
           startTime: '09:00',
           endTime: '18:00',
@@ -337,7 +348,17 @@ async function main() {
     const [corteBarbId] = [serviceIds['Corte + Barba']]
     const [barbId] = [serviceIds['Barba']]
 
-    const apptSeed = [
+    type SeedAppointment = {
+      clientId: string
+      serviceId: string
+      startH: number
+      daysOffset: number
+      status: 'scheduled' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled' | 'no_show'
+      barberId?: string
+      branchId?: string
+    }
+
+    const apptSeed: SeedAppointment[] = [
       // Upcoming
       { clientId: clientIds[0], serviceId: corteId, startH: 10, daysOffset: 1, status: 'scheduled' as const },
       { clientId: clientIds[1], serviceId: corteBarbId, startH: 11, daysOffset: 1, status: 'confirmed' as const },
@@ -349,6 +370,12 @@ async function main() {
       { clientId: clientIds[0], serviceId: corteId, startH: 15, daysOffset: -1, status: 'completed' as const },
       { clientId: clientIds[1], serviceId: barbId, startH: 16, daysOffset: -2, status: 'cancelled' as const },
       { clientId: clientIds[2], serviceId: corteId, startH: 11, daysOffset: -3, status: 'no_show' as const },
+      ...(barberoNorteId && norteBranchId
+        ? [
+            { clientId: clientIds[3], serviceId: corteId, startH: 12, daysOffset: 1, status: 'scheduled' as const, barberId: barberoNorteId, branchId: norteBranchId },
+            { clientId: clientIds[4], serviceId: barbId, startH: 15, daysOffset: 2, status: 'confirmed' as const, barberId: barberoNorteId, branchId: norteBranchId },
+          ]
+        : []),
     ]
 
     for (const a of apptSeed) {
@@ -359,6 +386,8 @@ async function main() {
 
       const startAt = a.daysOffset >= 0 ? futureDate(a.daysOffset, a.startH) : pastDate(-a.daysOffset, a.startH)
       const endAt = new Date(startAt.getTime() + svc[0].durationMinutes * 60000)
+      const appointmentBarberId = a.barberId ?? barberoId
+      const appointmentBranchId = a.branchId ?? centroBranchId
 
       // Skip if an appointment already exists for this barber at this exact time
       const overlap = await db
@@ -366,7 +395,7 @@ async function main() {
         .from(appointments)
         .where(
           and(
-            eq(appointments.barberId, barberoId),
+            eq(appointments.barberId, appointmentBarberId),
             eq(appointments.startAt, startAt),
           ),
         )
@@ -379,8 +408,8 @@ async function main() {
 
       const [appt] = await db.insert(appointments).values({
         organizationId: org.id,
-        branchId: centroBranchId,
-        barberId: barberoId,
+        branchId: appointmentBranchId,
+        barberId: appointmentBarberId,
         clientId: a.clientId,
         createdByUserId: adminId,
         status: a.status,
@@ -391,6 +420,7 @@ async function main() {
       }).returning()
 
       await db.insert(appointmentServices).values({
+        organizationId: org.id,
         appointmentId: appt.id,
         serviceId: a.serviceId,
         priceAtTime: svc[0].price,

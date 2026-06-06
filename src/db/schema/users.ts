@@ -32,6 +32,7 @@ export const users = pgTable('users', {
 ])
 
 export const userBranches = pgTable('user_branches', {
+  organizationId: uuid('organization_id').notNull().references(() => organizations.id),
   userId: uuid('user_id').notNull().references(() => users.id),
   branchId: uuid('branch_id').notNull().references(() => branches.id),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

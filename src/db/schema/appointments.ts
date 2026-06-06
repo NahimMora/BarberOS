@@ -7,6 +7,7 @@ import {
   timestamp,
   pgEnum,
   jsonb,
+  primaryKey,
 } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { organizations } from './organizations'
@@ -55,11 +56,14 @@ export const appointments = pgTable('appointments', {
 })
 
 export const appointmentServices = pgTable('appointment_services', {
+  organizationId: uuid('organization_id').notNull().references(() => organizations.id),
   appointmentId: uuid('appointment_id').notNull().references(() => appointments.id),
   serviceId: uuid('service_id').notNull().references(() => services.id),
   priceAtTime: numeric('price_at_time', { precision: 12, scale: 2 }).notNull(),
   durationAtTime: integer('duration_at_time').notNull(),
-})
+}, (table) => [
+  primaryKey({ columns: [table.appointmentId, table.serviceId] }),
+])
 
 export const appointmentHistory = pgTable('appointment_history', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),

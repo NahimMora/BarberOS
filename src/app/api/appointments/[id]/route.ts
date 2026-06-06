@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { eq, and, inArray } from 'drizzle-orm'
+import { eq, and, inArray, isNull } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import {
   appointments,
@@ -25,6 +25,7 @@ import {
 } from '@/lib/appointments/validate'
 import type { AppointmentStatus } from '@/lib/appointments/types'
 import { canAccessAppointment } from '@/lib/auth/authorization'
+import { barberBelongsToBranch } from '@/lib/auth/organization-scope'
 
 const patchSchema = z.discriminatedUnion('action', [
   z.object({
@@ -201,6 +202,12 @@ async function handleReschedule(
   data: { action: 'reschedule'; startAt: string; serviceIds?: string[]; barberId?: string; reason?: string },
   user: AppUser,
 ) {
+  if (['completed', 'cancelled', 'no_show'].includes(current.status)) {
+    return NextResponse.json(
+      { error: 'Los turnos finalizados no se pueden reprogramar' },
+      { status: 422 },
+    )
+  }
   const newBarberId = data.barberId ?? current.barberId
   if (user.role === 'barber' && newBarberId !== user.id) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
@@ -219,8 +226,13 @@ async function handleReschedule(
         and(
           eq(services.organizationId, current.organizationId),
           inArray(services.id, data.serviceIds),
+          eq(services.active, true),
+          isNull(services.deletedAt),
         ),
       )
+    if (serviceRows.length !== data.serviceIds.length) {
+      return NextResponse.json({ error: 'Uno o más servicios no son válidos' }, { status: 400 })
+    }
     totalDuration = serviceRows.reduce((a, s) => a + s.durationMinutes, 0)
   } else {
     const existing = await db
@@ -237,9 +249,21 @@ async function handleReschedule(
     .from(branches)
     .where(and(eq(branches.id, current.branchId), eq(branches.organizationId, current.organizationId)))
     .limit(1)
+  if (!branch) {
+    return NextResponse.json({ error: 'Sucursal no encontrada' }, { status: 404 })
+  }
+  if (
+    !(await barberBelongsToBranch(
+      current.organizationId,
+      newBarberId,
+      current.branchId,
+    ))
+  ) {
+    return NextResponse.json({ error: 'Barbero no disponible en la sucursal' }, { status: 400 })
+  }
 
   try {
-    if (branch) validateBranchWorkingHours(branch, startAt, endAt)
+    validateBranchWorkingHours(branch, startAt, endAt)
     await validateBarberAvailability(db, current.organizationId, newBarberId, current.branchId, startAt, endAt)
     await validateNoOverlap(db, newBarberId, startAt, endAt, id)
   } catch (err) {
@@ -265,6 +289,7 @@ async function handleReschedule(
       await tx.delete(appointmentServices).where(eq(appointmentServices.appointmentId, id))
       await tx.insert(appointmentServices).values(
         serviceRows.map((s) => ({
+          organizationId: current.organizationId,
           appointmentId: id,
           serviceId: s.id,
           priceAtTime: s.price,
