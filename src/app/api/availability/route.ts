@@ -10,6 +10,7 @@ import {
 } from '@/db/schema'
 import { getSession } from '@/lib/auth/get-session'
 import { getLocalDayUtcRange } from '@/lib/datetime/local-day-range'
+import { hasBranchAccess } from '@/lib/auth/authorization'
 
 export async function GET(req: Request) {
   const user = await getSession()
@@ -23,6 +24,12 @@ export async function GET(req: Request) {
 
   if (!barberId || !branchId || !dateStr) {
     return NextResponse.json({ error: 'barber_id, branch_id y date son requeridos' }, { status: 400 })
+  }
+  if (!hasBranchAccess(user, branchId)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+  if (user.role === 'barber' && user.id !== barberId) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   // Read slot config from organization_settings

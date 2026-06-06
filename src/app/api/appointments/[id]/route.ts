@@ -24,6 +24,7 @@ import {
   AvailabilityError,
 } from '@/lib/appointments/validate'
 import type { AppointmentStatus } from '@/lib/appointments/types'
+import { canAccessAppointment } from '@/lib/auth/authorization'
 
 const patchSchema = z.discriminatedUnion('action', [
   z.object({
@@ -54,7 +55,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (!appointment) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   // Barber can only see their own appointments
-  if (user.role === 'barber' && appointment.barberId !== user.id) {
+  if (!canAccessAppointment(user, appointment.branchId, appointment.barberId)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -86,7 +87,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (!current) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   // Barbers can only change their own appointments
-  if (user.role === 'barber' && current.barberId !== user.id) {
+  if (!canAccessAppointment(user, current.branchId, current.barberId)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -201,6 +202,9 @@ async function handleReschedule(
   user: AppUser,
 ) {
   const newBarberId = data.barberId ?? current.barberId
+  if (user.role === 'barber' && newBarberId !== user.id) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
   const startAt = new Date(data.startAt)
 
   // Compute duration

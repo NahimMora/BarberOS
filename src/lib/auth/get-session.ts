@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { db } from '@/lib/db'
-import { users } from '@/db/schema'
-import { eq } from 'drizzle-orm'
+import { userBranches, users } from '@/db/schema'
+import { and, eq, isNull } from 'drizzle-orm'
 
 export type AppUser = {
   id: string
@@ -11,6 +11,7 @@ export type AppUser = {
   status: 'active' | 'invited' | 'disabled'
   fullName: string
   email: string
+  branchIds: string[]
 }
 
 export async function getSession(): Promise<AppUser | null> {
@@ -22,10 +23,20 @@ export async function getSession(): Promise<AppUser | null> {
   const [appUser] = await db
     .select()
     .from(users)
-    .where(eq(users.authId, user.id))
+    .where(
+      and(
+        eq(users.authId, user.id),
+        eq(users.status, 'active'),
+        isNull(users.deletedAt),
+      ),
+    )
     .limit(1)
 
   if (!appUser) return null
+  const branchRows = await db
+    .select({ branchId: userBranches.branchId })
+    .from(userBranches)
+    .where(eq(userBranches.userId, appUser.id))
 
   return {
     id: appUser.id,
@@ -35,5 +46,6 @@ export async function getSession(): Promise<AppUser | null> {
     status: appUser.status,
     fullName: appUser.fullName,
     email: appUser.email,
+    branchIds: branchRows.map((row) => row.branchId),
   }
 }

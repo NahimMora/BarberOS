@@ -1,19 +1,23 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { eq, and, gte, inArray, lt } from 'drizzle-orm'
+import { eq, and, gte, inArray, isNull, lt } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import {
   appointments,
   appointmentServices,
   appointmentHistory,
+  clients,
   domainEvents,
   organizationSettings,
   services,
+  userBranches,
+  users,
 } from '@/db/schema'
 import { getSession } from '@/lib/auth/get-session'
 import { validateNoOverlap, validateBarberAvailability, validateBranchWorkingHours, OverlapError, AvailabilityError } from '@/lib/appointments/validate'
 import { branches } from '@/db/schema'
 import { getLocalDayUtcRange } from '@/lib/datetime/local-day-range'
+import { canCreateAppointment, hasBranchAccess } from '@/lib/auth/authorization'
 
 const createSchema = z.object({
   branchId: z.string().uuid(),
@@ -38,7 +42,15 @@ export async function GET(req: Request) {
   const conditions = [eq(appointments.organizationId, user.organizationId)]
 
   if (barberId) conditions.push(eq(appointments.barberId, barberId))
-  if (branchId) conditions.push(eq(appointments.branchId, branchId))
+  if (branchId) {
+    if (!hasBranchAccess(user, branchId)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    conditions.push(eq(appointments.branchId, branchId))
+  } else if (user.role !== 'admin') {
+    if (user.branchIds.length === 0) return NextResponse.json([])
+    conditions.push(inArray(appointments.branchId, user.branchIds))
+  }
   if (status && ['scheduled', 'confirmed', 'in_progress', 'completed', 'cancelled', 'no_show'].includes(status)) {
     conditions.push(eq(appointments.status, status as typeof appointments.status.enumValues[number]))
   }
@@ -64,8 +76,21 @@ export async function GET(req: Request) {
   }
 
   const rows = await db
-    .select()
+    .select({
+      id: appointments.id,
+      branchId: appointments.branchId,
+      barberId: appointments.barberId,
+      clientId: appointments.clientId,
+      clientFirstName: clients.firstName,
+      clientLastName: clients.lastName,
+      status: appointments.status,
+      source: appointments.source,
+      startAt: appointments.startAt,
+      endAt: appointments.endAt,
+      notes: appointments.notes,
+    })
     .from(appointments)
+    .leftJoin(clients, eq(clients.id, appointments.clientId))
     .where(and(...conditions))
     .orderBy(appointments.startAt)
     .limit(200)
@@ -84,6 +109,34 @@ export async function POST(req: Request) {
   }
 
   const { branchId, barberId, clientId, source, startAt: startAtStr, serviceIds, notes } = parsed.data
+  if (!canCreateAppointment(user, branchId, barberId)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+
+  const [barber] = await db
+    .select({ id: users.id })
+    .from(users)
+    .innerJoin(
+      userBranches,
+      and(
+        eq(userBranches.userId, users.id),
+        eq(userBranches.branchId, branchId),
+      ),
+    )
+    .where(
+      and(
+        eq(users.id, barberId),
+        eq(users.organizationId, user.organizationId),
+        eq(users.role, 'barber'),
+        eq(users.status, 'active'),
+        isNull(users.deletedAt),
+      ),
+    )
+    .limit(1)
+
+  if (!barber) {
+    return NextResponse.json({ error: 'Barbero no disponible en la sucursal' }, { status: 400 })
+  }
 
   // Fetch services to compute end time
   const serviceRows = await db

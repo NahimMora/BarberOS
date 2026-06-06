@@ -15,6 +15,7 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -34,6 +35,8 @@ type Appointment = {
   id: string
   barberId: string
   clientId: string | null
+  clientFirstName: string | null
+  clientLastName: string | null
   status: string
   source: string
   startAt: string
@@ -44,6 +47,15 @@ type Appointment = {
 type Client = { id: string; firstName: string | null; lastName: string | null; whatsappRaw: string | null }
 type Service = { id: string; name: string; durationMinutes: number; price: string }
 type Slot = { startAt: string; endAt: string }
+type Branch = { id: string; name: string; timezone: string | null }
+type Barber = { id: string; fullName: string; branchId: string; displayColor: string | null }
+type AgendaContext = {
+  user: { id: string; role: 'admin' | 'receptionist' | 'barber' }
+  branches: Branch[]
+  barbers: Barber[]
+}
+
+const ANONYMOUS_CLIENT = '__anonymous__'
 
 const STATUS_LABELS: Record<string, string> = {
   scheduled: 'Agendado',
@@ -77,9 +89,12 @@ export default function AgendaPage() {
   const [newOpen, setNewOpen] = useState(false)
   const [clients, setClients] = useState<Client[]>([])
   const [services, setServices] = useState<Service[]>([])
+  const [branches, setBranches] = useState<Branch[]>([])
+  const [barbers, setBarbers] = useState<Barber[]>([])
+  const [currentUser, setCurrentUser] = useState<AgendaContext['user'] | null>(null)
   const [barberId, setBarberId] = useState('')
   const [branchId, setBranchId] = useState('')
-  const [selectedClient, setSelectedClient] = useState('')
+  const [selectedClient, setSelectedClient] = useState(ANONYMOUS_CLIENT)
   const [selectedService, setSelectedService] = useState('')
   const [slots, setSlots] = useState<Slot[]>([])
   const [selectedSlot, setSelectedSlot] = useState('')
@@ -114,13 +129,23 @@ export default function AgendaPage() {
   }
 
   async function openNew() {
-    // Fetch clients and services for the form
-    const [cr, sr] = await Promise.all([
+    const [cr, sr, contextResponse] = await Promise.all([
       fetch('/api/clients').then(r => r.json()),
       fetch('/api/services').then(r => r.json()),
+      fetch('/api/agenda-context').then(r => r.json() as Promise<AgendaContext>),
     ])
     setClients(cr.data ?? [])
     setServices(sr)
+    setBranches(contextResponse.branches ?? [])
+    setBarbers(contextResponse.barbers ?? [])
+    setCurrentUser(contextResponse.user)
+    const defaultBranch = contextResponse.branches?.[0]?.id ?? ''
+    const defaultBarber = contextResponse.user?.role === 'barber'
+      ? contextResponse.user.id
+      : contextResponse.barbers?.find((barber) => barber.branchId === defaultBranch)?.id ?? ''
+    setBranchId(defaultBranch)
+    setBarberId(defaultBarber)
+    setSelectedClient(ANONYMOUS_CLIENT)
     setNewOpen(true)
     setSlots([])
     setSelectedSlot('')
@@ -162,7 +187,8 @@ export default function AgendaPage() {
         body: JSON.stringify({
           branchId,
           barberId,
-          clientId: selectedClient || undefined,
+          clientId: selectedClient === ANONYMOUS_CLIENT ? undefined : selectedClient,
+          source: selectedClient === ANONYMOUS_CLIENT ? 'walk_in' : 'booked',
           startAt: slot.startAt,
           serviceIds: [selectedService],
         }),
@@ -254,7 +280,9 @@ export default function AgendaPage() {
                       {' — '}
                       {new Date(a.endAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' })}
                     </TableCell>
-                    <TableCell>{a.clientId ?? 'Walk-in'}</TableCell>
+                    <TableCell>
+                      {[a.clientFirstName, a.clientLastName].filter(Boolean).join(' ') || 'Walk-in'}
+                    </TableCell>
                     <TableCell>
                       <Badge variant={STATUS_VARIANTS[a.status] ?? 'outline'}>
                         {STATUS_LABELS[a.status] ?? a.status}
@@ -275,7 +303,17 @@ export default function AgendaPage() {
                             <Check className="h-4 w-4 text-green-600" />
                           </Button>
                         )}
-                        {(a.status === 'confirmed' || a.status === 'in_progress') && (
+                        {a.status === 'confirmed' && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Iniciar atención"
+                            onClick={() => updateStatus(a.id, 'in_progress')}
+                          >
+                            <Check className="h-4 w-4 text-green-600" />
+                          </Button>
+                        )}
+                        {a.status === 'in_progress' && (
                           <Button
                             variant="ghost"
                             size="icon"
@@ -323,49 +361,108 @@ export default function AgendaPage() {
           </DialogHeader>
           <div className="grid gap-4 py-2">
             <div className="space-y-1">
-              <Label>Sucursal ID</Label>
-              <Input
-                placeholder="UUID de sucursal"
+              <Label>Sucursal</Label>
+              <Select
+                items={branches.map((branch) => ({ value: branch.id, label: branch.name }))}
                 value={branchId}
-                onChange={(e) => setBranchId(e.target.value)}
-              />
+                onValueChange={(value) => {
+                  const nextBranchId = value ?? ''
+                  setBranchId(nextBranchId)
+                  const nextBarber = currentUser?.role === 'barber'
+                    ? currentUser.id
+                    : barbers.find((barber) => barber.branchId === nextBranchId)?.id ?? ''
+                  setBarberId(nextBarber)
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Seleccionar sucursal" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {branches.map((branch) => (
+                      <SelectItem key={branch.id} value={branch.id}>
+                        {branch.name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1">
-              <Label>Barbero ID</Label>
-              <Input
-                placeholder="UUID de barbero"
+              <Label>Barbero</Label>
+              <Select
+                items={barbers
+                  .filter((barber) => barber.branchId === branchId)
+                  .map((barber) => ({ value: barber.id, label: barber.fullName }))}
                 value={barberId}
-                onChange={(e) => setBarberId(e.target.value)}
-              />
+                onValueChange={(value) => setBarberId(value ?? '')}
+                disabled={currentUser?.role === 'barber'}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Seleccionar barbero" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {barbers
+                      .filter((barber) => barber.branchId === branchId)
+                      .map((barber) => (
+                        <SelectItem key={barber.id} value={barber.id}>
+                          {barber.fullName}
+                        </SelectItem>
+                      ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1">
               <Label>Servicio</Label>
-              <Select value={selectedService} onValueChange={(v) => setSelectedService(v ?? '')}>
+              <Select
+                items={services.map((service) => ({
+                  value: service.id,
+                  label: `${service.name} (${service.durationMinutes}min — $${service.price})`,
+                }))}
+                value={selectedService}
+                onValueChange={(v) => setSelectedService(v ?? '')}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Seleccionar servicio" />
                 </SelectTrigger>
                 <SelectContent>
-                  {services.map(s => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name} ({s.durationMinutes}min — ${s.price})
-                    </SelectItem>
-                  ))}
+                  <SelectGroup>
+                    {services.map(s => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name} ({s.durationMinutes}min — ${s.price})
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1">
               <Label>Cliente (opcional)</Label>
-              <Select value={selectedClient} onValueChange={(v) => setSelectedClient(v ?? '')}>
-                <SelectTrigger>
+              <Select
+                items={[
+                  { value: ANONYMOUS_CLIENT, label: 'Walk-in (sin cliente)' },
+                  ...clients.map((client) => ({
+                    value: client.id,
+                    label: [client.firstName, client.lastName].filter(Boolean).join(' ') || client.whatsappRaw || client.id,
+                  })),
+                ]}
+                value={selectedClient}
+                onValueChange={(v) => setSelectedClient(v ?? ANONYMOUS_CLIENT)}
+              >
+                <SelectTrigger className="w-full">
                   <SelectValue placeholder="Walk-in / anónimo" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Walk-in (sin cliente)</SelectItem>
-                  {clients.map(c => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {[c.firstName, c.lastName].filter(Boolean).join(' ') || c.whatsappRaw || c.id}
-                    </SelectItem>
-                  ))}
+                  <SelectGroup>
+                    <SelectItem value={ANONYMOUS_CLIENT}>Walk-in (sin cliente)</SelectItem>
+                    {clients.map(c => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {[c.firstName, c.lastName].filter(Boolean).join(' ') || c.whatsappRaw || c.id}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
                 </SelectContent>
               </Select>
             </div>
@@ -380,18 +477,27 @@ export default function AgendaPage() {
                     : 'Completá sucursal, barbero y servicio para ver slots'}
                 </p>
               ) : (
-                <Select value={selectedSlot} onValueChange={(v) => setSelectedSlot(v ?? '')}>
-                  <SelectTrigger>
+                <Select
+                  items={slots.map((slot) => ({
+                    value: slot.startAt,
+                    label: `${new Date(slot.startAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' })} — ${new Date(slot.endAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' })}`,
+                  }))}
+                  value={selectedSlot}
+                  onValueChange={(v) => setSelectedSlot(v ?? '')}
+                >
+                  <SelectTrigger className="w-full">
                     <SelectValue placeholder="Elegir horario" />
                   </SelectTrigger>
                   <SelectContent>
-                    {slots.map(s => (
-                      <SelectItem key={s.startAt} value={s.startAt}>
-                        {new Date(s.startAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' })}
-                        {' — '}
-                        {new Date(s.endAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' })}
-                      </SelectItem>
-                    ))}
+                    <SelectGroup>
+                      {slots.map(s => (
+                        <SelectItem key={s.startAt} value={s.startAt}>
+                          {new Date(s.startAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' })}
+                          {' — '}
+                          {new Date(s.endAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' })}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
                   </SelectContent>
                 </Select>
               )}
