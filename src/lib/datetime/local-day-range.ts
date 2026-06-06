@@ -1,4 +1,5 @@
 const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/
+const MONTH_PATTERN = /^(\d{4})-(\d{2})$/
 
 type DateParts = {
   year: number
@@ -14,6 +15,40 @@ export function getLocalDayUtcRange(date: string, timeZone: string) {
     start: localMidnightToUtc(startParts, timeZone),
     end: localMidnightToUtc(endParts, timeZone),
   }
+}
+
+export function getLocalMonthUtcRange(month: string, timeZone: string) {
+  const match = MONTH_PATTERN.exec(month)
+  if (!match) {
+    throw new RangeError('Invalid calendar month')
+  }
+
+  const year = Number(match[1])
+  const monthNumber = Number(match[2])
+  if (monthNumber < 1 || monthNumber > 12) {
+    throw new RangeError('Invalid calendar month')
+  }
+
+  const startParts = { year, month: monthNumber, day: 1 }
+  const nextMonth = new Date(Date.UTC(year, monthNumber, 1))
+  const endParts = {
+    year: nextMonth.getUTCFullYear(),
+    month: nextMonth.getUTCMonth() + 1,
+    day: 1,
+  }
+
+  return {
+    start: localMidnightToUtc(startParts, timeZone),
+    end: localMidnightToUtc(endParts, timeZone),
+  }
+}
+
+export function getLocalCalendarDate(date: Date, timeZone: string): string {
+  return formatCalendarParts(date, timeZone, ['year', 'month', 'day']).join('-')
+}
+
+export function getLocalCalendarMonth(date: Date, timeZone: string): string {
+  return formatCalendarParts(date, timeZone, ['year', 'month']).join('-')
 }
 
 function parseDate(value: string): DateParts {
@@ -88,4 +123,23 @@ function getTimeZoneOffsetMs(date: Date, timeZone: string): number {
   )
 
   return representedAsUtc - Math.trunc(date.getTime() / 1000) * 1000
+}
+
+function formatCalendarParts(
+  date: Date,
+  timeZone: string,
+  partTypes: Array<'year' | 'month' | 'day'>,
+): string[] {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date)
+
+  return partTypes.map((type) => {
+    const part = parts.find((candidate) => candidate.type === type)
+    if (!part) throw new RangeError(`Missing ${type} calendar part`)
+    return part.value
+  })
 }

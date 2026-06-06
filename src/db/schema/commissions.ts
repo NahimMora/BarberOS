@@ -39,6 +39,11 @@ export const commissions = pgTable('commissions', {
     table.barberId,
     table.period,
   ),
+  index('commissions_organization_period_status_idx').on(
+    table.organizationId,
+    table.period,
+    table.status,
+  ),
   check('commissions_amounts_nonnegative', sql`
     ${table.baseAmount} >= 0
     AND ${table.commissionAmount} >= 0

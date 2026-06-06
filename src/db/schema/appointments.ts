@@ -8,6 +8,7 @@ import {
   pgEnum,
   jsonb,
   primaryKey,
+  index,
 } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { organizations } from './organizations'
@@ -53,7 +54,18 @@ export const appointments = pgTable('appointments', {
   notes: text('notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-})
+}, (table) => [
+  index('appointments_organization_branch_start_idx').on(
+    table.organizationId,
+    table.branchId,
+    table.startAt,
+  ),
+  index('appointments_organization_barber_start_idx').on(
+    table.organizationId,
+    table.barberId,
+    table.startAt,
+  ),
+])
 
 export const appointmentServices = pgTable('appointment_services', {
   organizationId: uuid('organization_id').notNull().references(() => organizations.id),
