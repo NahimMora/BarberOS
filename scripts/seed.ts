@@ -24,6 +24,7 @@ import {
   payments,
   saleItems,
   sales,
+  systemEvents,
 } from '../src/db/schema'
 import { normalizePhone } from '../src/lib/phone/normalize'
 import {
@@ -754,6 +755,52 @@ async function main() {
       createdBy: adminId,
     })
     console.log('  Created demo cash expense')
+  }
+
+  const technicalSeedEvents = [
+    {
+      level: 'info' as const,
+      source: 'seed.phase3',
+      message: 'Datos demo de paneles y exportaciones disponibles',
+      context: {
+        organizationId: org.id,
+        scope: 'phase-3',
+        modules: ['dashboard', 'control', 'exports'],
+      },
+    },
+    {
+      level: 'warn' as const,
+      source: 'cash.reconciliation',
+      message: 'La caja demo de Centro cerró con diferencia',
+      context: {
+        organizationId: org.id,
+        branchId: centroBranchId,
+        cashDifference: '-500.00',
+        source: 'seed',
+      },
+    },
+    {
+      level: 'info' as const,
+      source: 'database.migrations',
+      message: 'Esquema de reportes verificado para el modo demo',
+      context: {
+        organizationId: org.id,
+        migration: '0009_happy_spacker_dave',
+        source: 'seed',
+      },
+    },
+  ]
+
+  for (const event of technicalSeedEvents) {
+    const [existingEvent] = await db
+      .select({ id: systemEvents.id })
+      .from(systemEvents)
+      .where(eq(systemEvents.message, event.message))
+      .limit(1)
+    if (!existingEvent) {
+      await db.insert(systemEvents).values(event)
+      console.log(`  Created system event: ${event.source}`)
+    }
   }
 
   console.log('\nSeed completed successfully.')
