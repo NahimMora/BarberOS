@@ -50,6 +50,20 @@
       "when": 1780710775094,
       "tag": "0006_data_api_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1780717479632,
+      "tag": "0007_fixed_dragon_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1780717542956,
+      "tag": "0008_purple_meggan",
+      "breakpoints": true
     }
   ]
 }
