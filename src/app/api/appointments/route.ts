@@ -6,6 +6,7 @@ import {
   appointments,
   appointmentServices,
   appointmentHistory,
+  auditLogs,
   clients,
   domainEvents,
   organizationSettings,
@@ -214,6 +215,10 @@ export async function POST(req: Request) {
 
   try {
     const result = await db.transaction(async (tx) => {
+      validateBranchWorkingHours(branch, startAt, endAt)
+      await validateBarberAvailability(tx, user.organizationId, barberId, branchId, startAt, endAt)
+      await validateNoOverlap(tx, barberId, startAt, endAt)
+
       const [appointment] = await tx
         .insert(appointments)
         .values({
@@ -248,6 +253,22 @@ export async function POST(req: Request) {
         userId: user.id,
       })
 
+      await tx.insert(auditLogs).values({
+        organizationId: user.organizationId,
+        userId: user.id,
+        action: 'appointment.created',
+        entity: 'appointments',
+        entityId: appointment.id,
+        diff: {
+          branchId,
+          barberId,
+          clientId: clientId ?? null,
+          startAt: startAt.toISOString(),
+          endAt: endAt.toISOString(),
+          serviceIds,
+        },
+      })
+
       await tx.insert(domainEvents).values({
         organizationId: user.organizationId,
         eventType: 'appointment.created',
@@ -267,6 +288,9 @@ export async function POST(req: Request) {
         { error: 'El barbero ya tiene un turno en ese horario' },
         { status: 409 },
       )
+    }
+    if (err instanceof AvailabilityError || err instanceof OverlapError) {
+      return NextResponse.json({ error: err.message }, { status: 409 })
     }
     throw err
   }

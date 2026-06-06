@@ -112,6 +112,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         { status: 409 },
       )
     }
+    if (err instanceof AvailabilityError || err instanceof OverlapError) {
+      return NextResponse.json({ error: err.message }, { status: 409 })
+    }
     throw err
   }
 }
@@ -274,6 +277,17 @@ async function handleReschedule(
   }
 
   const result = await db.transaction(async (tx) => {
+    validateBranchWorkingHours(branch, startAt, endAt)
+    await validateBarberAvailability(
+      tx,
+      current.organizationId,
+      newBarberId,
+      current.branchId,
+      startAt,
+      endAt,
+    )
+    await validateNoOverlap(tx, newBarberId, startAt, endAt, id)
+
     const [updated] = await tx
       .update(appointments)
       .set({
@@ -312,6 +326,27 @@ async function handleReschedule(
       toBarberId: newBarberId,
       reason: data.reason,
       userId: user.id,
+    })
+
+    await tx.insert(auditLogs).values({
+      organizationId: current.organizationId,
+      userId: user.id,
+      action: `appointment.${action}`,
+      entity: 'appointments',
+      entityId: id,
+      diff: {
+        from: {
+          barberId: current.barberId,
+          startAt: current.startAt.toISOString(),
+          endAt: current.endAt.toISOString(),
+        },
+        to: {
+          barberId: newBarberId,
+          startAt: startAt.toISOString(),
+          endAt: endAt.toISOString(),
+        },
+        reason: data.reason ?? null,
+      },
     })
 
     await tx.insert(domainEvents).values({
