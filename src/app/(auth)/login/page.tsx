@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { ArrowRight, CalendarCheck2, CircleDollarSign, ShieldCheck } from 'lucide-react'
 import { BrandMark } from '@/components/brand-mark'
 import { Button } from '@/components/ui/button'
@@ -17,7 +16,6 @@ const capabilities = [
 ]
 
 export default function LoginPage() {
-  const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -37,7 +35,7 @@ export default function LoginPage() {
       return
     }
 
-    router.push('/dashboard')
+    window.location.assign('/dashboard')
   }
 
   return (

@@ -1,6 +1,5 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
 import { LogOut } from 'lucide-react'
 import { BrandMark } from '@/components/brand-mark'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -21,12 +20,10 @@ const roleLabel: Record<AppUser['role'], string> = {
 }
 
 export function AppHeader({ user }: { user: AppUser }) {
-  const router = useRouter()
-
   async function handleLogout() {
     const supabase = createClient()
-    await supabase.auth.signOut()
-    router.push('/login')
+    const { error } = await supabase.auth.signOut()
+    if (!error) window.location.replace('/login')
   }
 
   const initials = user.fullName
