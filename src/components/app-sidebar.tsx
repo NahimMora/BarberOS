@@ -7,6 +7,7 @@ import {
   ChartNoAxesCombined,
   DollarSign,
   House,
+  ShieldCheck,
   Settings2,
   Users,
 } from 'lucide-react'
@@ -30,6 +31,7 @@ const navItems: {
   { href: '/operacion', label: 'Operación', icon: Settings2, roles: ['admin'] as Role[], mobile: false },
   { href: '/caja', label: 'Caja', icon: DollarSign, roles: ['admin', 'receptionist'] as Role[] },
   { href: '/comisiones', label: 'Comisiones', icon: ChartNoAxesCombined, roles: ['admin', 'barber'] as Role[] },
+  { href: '/control', label: 'Control', icon: ShieldCheck, roles: ['admin'] as Role[], mobile: false },
 ]
 
 export function AppSidebar({ role }: { role: Role }) {
