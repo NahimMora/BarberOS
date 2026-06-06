@@ -2,8 +2,9 @@ import 'dotenv/config'
 import { createClient } from '@supabase/supabase-js'
 import postgres from 'postgres'
 import { drizzle } from 'drizzle-orm/postgres-js'
-import { eq, and } from 'drizzle-orm'
+import { eq, and, isNull } from 'drizzle-orm'
 import {
+  auditLogs,
   organizations,
   organizationSettings,
   branches,
@@ -16,8 +17,24 @@ import {
   appointments,
   appointmentServices,
   appointmentHistory,
+  cashMovements,
+  cashSessions,
+  commissions,
+  domainEvents,
+  payments,
+  saleItems,
+  sales,
 } from '../src/db/schema'
 import { normalizePhone } from '../src/lib/phone/normalize'
+import {
+  calculateCashSnapshot,
+  calculateCommission,
+  calculateSaleTotals,
+  formatCents,
+  parseMoney,
+  type PaymentMethod,
+} from '../src/lib/money/money'
+import { getCommissionPeriod } from '../src/lib/finance/commission-period'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -370,10 +387,13 @@ async function main() {
       { clientId: clientIds[0], serviceId: corteId, startH: 15, daysOffset: -1, status: 'completed' as const },
       { clientId: clientIds[1], serviceId: barbId, startH: 16, daysOffset: -2, status: 'cancelled' as const },
       { clientId: clientIds[2], serviceId: corteId, startH: 11, daysOffset: -3, status: 'no_show' as const },
+      { clientId: clientIds[2], serviceId: barbId, startH: 13, daysOffset: -4, status: 'completed' as const },
       ...(barberoNorteId && norteBranchId
         ? [
             { clientId: clientIds[3], serviceId: corteId, startH: 12, daysOffset: 1, status: 'scheduled' as const, barberId: barberoNorteId, branchId: norteBranchId },
             { clientId: clientIds[4], serviceId: barbId, startH: 15, daysOffset: 2, status: 'confirmed' as const, barberId: barberoNorteId, branchId: norteBranchId },
+            { clientId: clientIds[3], serviceId: corteBarbId, startH: 12, daysOffset: -1, status: 'completed' as const, barberId: barberoNorteId, branchId: norteBranchId },
+            { clientId: clientIds[4], serviceId: corteId, startH: 14, daysOffset: -2, status: 'completed' as const, barberId: barberoNorteId, branchId: norteBranchId },
           ]
         : []),
     ]
@@ -437,6 +457,303 @@ async function main() {
 
       console.log(`  Created appointment: ${a.status} @ ${startAt.toISOString()}`)
     }
+  }
+
+  // --- FASE 2 DATA ---
+
+  console.log('\nSeeding financial demo data...')
+  const [settings] = await db
+    .select()
+    .from(organizationSettings)
+    .where(eq(organizationSettings.organizationId, org.id))
+    .limit(1)
+  const completedWithoutSale = await db
+    .select({
+      id: appointments.id,
+      branchId: appointments.branchId,
+      barberId: appointments.barberId,
+      clientId: appointments.clientId,
+      startAt: appointments.startAt,
+    })
+    .from(appointments)
+    .leftJoin(sales, eq(sales.appointmentId, appointments.id))
+    .where(and(
+      eq(appointments.organizationId, org.id),
+      eq(appointments.status, 'completed'),
+      isNull(sales.id),
+    ))
+
+  const [existingSale] = await db
+    .select({ id: sales.id })
+    .from(sales)
+    .where(eq(sales.organizationId, org.id))
+    .limit(1)
+  const firstFinancialSeed = !existingSale
+  const sessionByBranch = new Map<string, string>()
+  const sessionsCreatedForClosing = new Set<string>()
+
+  for (const appointment of completedWithoutSale) {
+    let cashSessionId = sessionByBranch.get(appointment.branchId)
+    if (!cashSessionId) {
+      const [openSession] = await db
+        .select({ id: cashSessions.id })
+        .from(cashSessions)
+        .where(and(
+          eq(cashSessions.organizationId, org.id),
+          eq(cashSessions.branchId, appointment.branchId),
+          eq(cashSessions.status, 'open'),
+        ))
+        .limit(1)
+
+      if (openSession) {
+        cashSessionId = openSession.id
+      } else {
+        const [createdSession] = await db
+          .insert(cashSessions)
+          .values({
+            organizationId: org.id,
+            branchId: appointment.branchId,
+            openedBy: adminId,
+            openedAt: firstFinancialSeed ? pastDate(1, 8) : new Date(),
+            openingAmount: '10000.00',
+          })
+          .returning({ id: cashSessions.id })
+        cashSessionId = createdSession.id
+        if (firstFinancialSeed) sessionsCreatedForClosing.add(createdSession.id)
+        console.log(`  Created cash session for branch ${appointment.branchId}`)
+      }
+      sessionByBranch.set(appointment.branchId, cashSessionId)
+    }
+
+    const appointmentItemRows = await db
+      .select({
+        serviceId: appointmentServices.serviceId,
+        description: services.name,
+        unitPrice: appointmentServices.priceAtTime,
+      })
+      .from(appointmentServices)
+      .innerJoin(services, eq(services.id, appointmentServices.serviceId))
+      .where(eq(appointmentServices.appointmentId, appointment.id))
+    if (appointmentItemRows.length === 0) continue
+
+    const discount = completedWithoutSale.indexOf(appointment) === 0 ? '500.00' : '0.00'
+    const totals = calculateSaleTotals(
+      appointmentItemRows.map((item) => ({ quantity: 1, unitPrice: item.unitPrice })),
+      discount,
+    )
+    const paymentMethod: PaymentMethod = (
+      ['cash', 'transfer', 'card', 'mercadopago_manual', 'other'] as const
+    )[completedWithoutSale.indexOf(appointment) % 5]
+    const [profile] = await db
+      .select({ commissionRate: barberProfiles.commissionRate })
+      .from(barberProfiles)
+      .where(and(
+        eq(barberProfiles.organizationId, org.id),
+        eq(barberProfiles.userId, appointment.barberId),
+      ))
+      .limit(1)
+    const rateSnapshot = profile?.commissionRate
+      ?? settings?.defaultCommissionRate
+      ?? '0.00'
+    const paidAt = appointment.startAt
+    const commissionAmount = calculateCommission(totals.total, rateSnapshot)
+
+    await db.transaction(async (tx) => {
+      const [sale] = await tx
+        .insert(sales)
+        .values({
+          organizationId: org.id,
+          branchId: appointment.branchId,
+          appointmentId: appointment.id,
+          barberId: appointment.barberId,
+          clientId: appointment.clientId,
+          subtotal: totals.subtotal,
+          discount: totals.discount,
+          total: totals.total,
+          status: 'paid',
+          createdBy: adminId,
+          paidAt,
+        })
+        .returning()
+
+      await tx.insert(saleItems).values(appointmentItemRows.map((item) => ({
+        organizationId: org.id,
+        saleId: sale.id,
+        serviceId: item.serviceId,
+        description: item.description,
+        quantity: 1,
+        unitPrice: item.unitPrice,
+        lineTotal: item.unitPrice,
+      })))
+      await tx.insert(payments).values({
+        organizationId: org.id,
+        saleId: sale.id,
+        method: paymentMethod,
+        amount: totals.total,
+        note: 'Pago demo',
+        createdBy: adminId,
+        createdAt: paidAt,
+      })
+      await tx.insert(cashMovements).values({
+        organizationId: org.id,
+        cashSessionId,
+        type: 'sale',
+        amount: totals.total,
+        paymentMethod,
+        referenceSaleId: sale.id,
+        note: 'Cobro demo de turno',
+        createdBy: adminId,
+        createdAt: paidAt,
+      })
+      await tx.insert(commissions).values({
+        organizationId: org.id,
+        barberId: appointment.barberId,
+        saleId: sale.id,
+        baseAmount: totals.total,
+        rateSnapshot,
+        commissionAmount,
+        period: getCommissionPeriod(
+          paidAt,
+          settings?.defaultTimezone ?? 'America/Argentina/Buenos_Aires',
+        ),
+      })
+      await tx.insert(auditLogs).values({
+        organizationId: org.id,
+        userId: adminId,
+        action: 'sale.paid',
+        entity: 'sales',
+        entityId: sale.id,
+        diff: {
+          source: 'seed',
+          appointmentId: appointment.id,
+          total: totals.total,
+          paymentMethod,
+          commissionAmount,
+        },
+        createdAt: paidAt,
+      })
+      await tx.insert(domainEvents).values({
+        organizationId: org.id,
+        eventType: 'sale.paid',
+        payload: {
+          source: 'seed',
+          saleId: sale.id,
+          branchId: appointment.branchId,
+          total: totals.total,
+          paymentMethod,
+        },
+        occurredAt: paidAt,
+      })
+    })
+    console.log(`  Created paid sale for appointment ${appointment.id} (${paymentMethod})`)
+  }
+
+  if (firstFinancialSeed) {
+    for (const sessionId of sessionsCreatedForClosing) {
+      const [session] = await db
+        .select()
+        .from(cashSessions)
+        .where(eq(cashSessions.id, sessionId))
+        .limit(1)
+      const movementRows = await db
+        .select()
+        .from(cashMovements)
+        .where(eq(cashMovements.cashSessionId, sessionId))
+      const snapshot = calculateCashSnapshot(
+        session.openingAmount,
+        movementRows.map((movement) => ({
+          type: movement.type,
+          method: movement.paymentMethod,
+          amount: movement.amount,
+        })),
+      )
+      const variance = session.branchId === centroBranchId ? 50000n : 0n
+      const countedCash = formatCents(parseMoney(snapshot.expectedCash) - variance)
+      const cashDifference = formatCents(
+        parseMoney(countedCash) - parseMoney(snapshot.expectedCash),
+      )
+      const closedAt = pastDate(1, 19)
+
+      await db.transaction(async (tx) => {
+        await tx
+          .update(cashSessions)
+          .set({
+            closedBy: adminId,
+            closedAt,
+            expectedCash: snapshot.expectedCash,
+            expectedTransfer: snapshot.expectedTransfer,
+            expectedCard: snapshot.expectedCard,
+            expectedMercadopagoManual: snapshot.expectedMercadopagoManual,
+            expectedOther: snapshot.expectedOther,
+            expectedTotal: snapshot.expectedTotal,
+            countedCash,
+            cashDifference,
+            status: 'closed',
+            updatedAt: closedAt,
+          })
+          .where(eq(cashSessions.id, sessionId))
+        await tx.insert(auditLogs).values({
+          organizationId: org.id,
+          userId: adminId,
+          action: 'cash.closed',
+          entity: 'cash_sessions',
+          entityId: sessionId,
+          diff: { source: 'seed', ...snapshot, countedCash, cashDifference },
+          createdAt: closedAt,
+        })
+        await tx.insert(domainEvents).values({
+          organizationId: org.id,
+          eventType: 'cash.closed',
+          payload: { source: 'seed', cashSessionId: sessionId, cashDifference },
+          occurredAt: closedAt,
+        })
+      })
+      console.log(`  Closed demo cash session ${sessionId} with difference ${cashDifference}`)
+    }
+  }
+
+  const [openCentroSession] = await db
+    .select()
+    .from(cashSessions)
+    .where(and(
+      eq(cashSessions.organizationId, org.id),
+      eq(cashSessions.branchId, centroBranchId),
+      eq(cashSessions.status, 'open'),
+    ))
+    .limit(1)
+  let currentCentroSession = openCentroSession
+  if (!currentCentroSession) {
+    ;[currentCentroSession] = await db
+      .insert(cashSessions)
+      .values({
+        organizationId: org.id,
+        branchId: centroBranchId,
+        openedBy: adminId,
+        openingAmount: '15000.00',
+      })
+      .returning()
+    console.log('  Created current open cash session for Centro')
+  }
+
+  const [existingDemoExpense] = await db
+    .select({ id: cashMovements.id })
+    .from(cashMovements)
+    .where(and(
+      eq(cashMovements.cashSessionId, currentCentroSession.id),
+      eq(cashMovements.note, 'Seed: insumos de limpieza'),
+    ))
+    .limit(1)
+  if (!existingDemoExpense) {
+    await db.insert(cashMovements).values({
+      organizationId: org.id,
+      cashSessionId: currentCentroSession.id,
+      type: 'expense',
+      amount: '1200.00',
+      paymentMethod: 'cash',
+      note: 'Seed: insumos de limpieza',
+      createdBy: adminId,
+    })
+    console.log('  Created demo cash expense')
   }
 
   console.log('\nSeed completed successfully.')
