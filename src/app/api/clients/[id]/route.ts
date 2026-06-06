@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { eq, and, isNull } from 'drizzle-orm'
+import { eq, and, isNull, ne } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { clients } from '@/db/schema'
 import { getSession } from '@/lib/auth/get-session'
@@ -49,20 +49,48 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const updates: Record<string, unknown> = { ...rest, updatedAt: new Date() }
 
   if (whatsappRaw !== undefined) {
+    const normalized = whatsappRaw ? normalizePhone(whatsappRaw) : null
+    if (whatsappRaw && !normalized) {
+      return NextResponse.json({ error: 'WhatsApp inválido' }, { status: 400 })
+    }
     updates.whatsappRaw = whatsappRaw
-    updates.whatsappE164 = whatsappRaw ? normalizePhone(whatsappRaw) : null
+    updates.whatsappE164 = normalized
+    if (normalized) {
+      const [duplicate] = await db
+        .select({ id: clients.id })
+        .from(clients)
+        .where(
+          and(
+            eq(clients.organizationId, user.organizationId),
+            eq(clients.whatsappE164, normalized),
+            ne(clients.id, id),
+            isNull(clients.deletedAt),
+          ),
+        )
+        .limit(1)
+      if (duplicate) {
+        return NextResponse.json(
+          { error: 'Ya existe un cliente con ese número de WhatsApp', existingId: duplicate.id },
+          { status: 409 },
+        )
+      }
+    }
   }
   if (phoneAltRaw !== undefined) {
+    const normalized = phoneAltRaw ? normalizePhone(phoneAltRaw) : null
+    if (phoneAltRaw && !normalized) {
+      return NextResponse.json({ error: 'Teléfono alternativo inválido' }, { status: 400 })
+    }
     updates.phoneAltRaw = phoneAltRaw
-    updates.phoneAltE164 = phoneAltRaw ? normalizePhone(phoneAltRaw) : null
+    updates.phoneAltE164 = normalized
   }
   if (consentData !== undefined) {
     updates.consentData = consentData
-    if (consentData) updates.consentDataAt = new Date()
+    updates.consentDataAt = consentData ? new Date() : null
   }
   if (consentWhatsapp !== undefined) {
     updates.consentWhatsapp = consentWhatsapp
-    if (consentWhatsapp) updates.consentWhatsappAt = new Date()
+    updates.consentWhatsappAt = consentWhatsapp ? new Date() : null
   }
 
   const [row] = await db
@@ -81,7 +109,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   try {
-    requireRole(user, ['admin', 'receptionist'])
+    requireRole(user, ['admin', 'receptionist', 'barber'])
   } catch {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }

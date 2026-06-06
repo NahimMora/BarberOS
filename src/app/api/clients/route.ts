@@ -15,7 +15,10 @@ const createSchema = z.object({
   cutPreferences: z.string().optional(),
   consentData: z.boolean().optional().default(false),
   consentWhatsapp: z.boolean().optional().default(false),
-})
+}).refine(
+  (value) => Boolean(value.firstName?.trim() || value.lastName?.trim() || value.whatsappRaw?.trim() || value.phoneAltRaw?.trim()),
+  { message: 'Debe indicar nombre o teléfono' },
+)
 
 export async function GET(req: Request) {
   const user = await getSession()
@@ -68,6 +71,12 @@ export async function POST(req: Request) {
 
   const whatsappE164 = whatsappRaw ? normalizePhone(whatsappRaw) : null
   const phoneAltE164 = phoneAltRaw ? normalizePhone(phoneAltRaw) : null
+  if (whatsappRaw && !whatsappE164) {
+    return NextResponse.json({ error: 'WhatsApp inválido' }, { status: 400 })
+  }
+  if (phoneAltRaw && !phoneAltE164) {
+    return NextResponse.json({ error: 'Teléfono alternativo inválido' }, { status: 400 })
+  }
 
   // Duplicate detection by whatsapp_e164
   if (whatsappE164) {

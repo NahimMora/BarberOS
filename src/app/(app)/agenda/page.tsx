@@ -29,10 +29,11 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { toast } from 'sonner'
-import { Plus, ChevronLeft, ChevronRight, Check, X, Minus } from 'lucide-react'
+import { Plus, ChevronLeft, ChevronRight, Check, X, Minus, CalendarSync } from 'lucide-react'
 
 type Appointment = {
   id: string
+  branchId: string
   barberId: string
   clientId: string | null
   clientFirstName: string | null
@@ -104,6 +105,10 @@ export default function AgendaPage() {
   // Cancel dialog
   const [cancelTarget, setCancelTarget] = useState<Appointment | null>(null)
   const [cancelReason, setCancelReason] = useState('')
+  const [rescheduleTarget, setRescheduleTarget] = useState<Appointment | null>(null)
+  const [rescheduleStart, setRescheduleStart] = useState('')
+  const [rescheduleBarberId, setRescheduleBarberId] = useState('')
+  const [rescheduleReason, setRescheduleReason] = useState('')
 
   const fetchAppointments = useCallback(async () => {
     setLoading(true)
@@ -149,6 +154,24 @@ export default function AgendaPage() {
     setNewOpen(true)
     setSlots([])
     setSelectedSlot('')
+  }
+
+  async function openReschedule(appointment: Appointment) {
+    try {
+      const contextResponse = await fetch('/api/agenda-context').then((response) => {
+        if (!response.ok) throw new Error('No se pudo cargar la disponibilidad')
+        return response.json() as Promise<AgendaContext>
+      })
+      setBranches(contextResponse.branches ?? [])
+      setBarbers(contextResponse.barbers ?? [])
+      setCurrentUser(contextResponse.user)
+      setRescheduleTarget(appointment)
+      setRescheduleBarberId(appointment.barberId)
+      setRescheduleStart(toDateTimeLocal(appointment.startAt))
+      setRescheduleReason('')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Error')
+    }
   }
 
   async function fetchSlots() {
@@ -219,6 +242,33 @@ export default function AgendaPage() {
     }
     toast.success('Turno actualizado')
     fetchAppointments()
+  }
+
+  async function handleReschedule() {
+    if (!rescheduleTarget || !rescheduleStart || !rescheduleBarberId) return
+    setSaving(true)
+    try {
+      const response = await fetch(`/api/appointments/${rescheduleTarget.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'reschedule',
+          startAt: new Date(rescheduleStart).toISOString(),
+          barberId: rescheduleBarberId,
+          reason: rescheduleReason || undefined,
+        }),
+      })
+      const body = await response.json()
+      if (!response.ok) {
+        toast.error(body.error ?? 'No se pudo reprogramar')
+        return
+      }
+      toast.success('Turno reprogramado')
+      setRescheduleTarget(null)
+      await fetchAppointments()
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -325,6 +375,14 @@ export default function AgendaPage() {
                         )}
                         {(a.status === 'scheduled' || a.status === 'confirmed') && (
                           <>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              title="Reprogramar"
+                              onClick={() => void openReschedule(a)}
+                            >
+                              <CalendarSync className="h-4 w-4" />
+                            </Button>
                             <Button
                               variant="ghost"
                               size="icon"
@@ -512,6 +570,66 @@ export default function AgendaPage() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={!!rescheduleTarget} onOpenChange={(open) => !open && setRescheduleTarget(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reprogramar turno</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-4 py-2">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="rescheduleStart">Nueva fecha y hora</Label>
+              <Input
+                id="rescheduleStart"
+                type="datetime-local"
+                value={rescheduleStart}
+                onChange={(event) => setRescheduleStart(event.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label>Barbero</Label>
+              <Select
+                items={barbers
+                  .filter((barber) => barber.branchId === rescheduleTarget?.branchId)
+                  .map((barber) => ({ value: barber.id, label: barber.fullName }))}
+                value={rescheduleBarberId}
+                onValueChange={(value) => setRescheduleBarberId(value ?? '')}
+                disabled={currentUser?.role === 'barber'}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Seleccionar barbero" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {barbers
+                      .filter((barber) => barber.branchId === rescheduleTarget?.branchId)
+                      .map((barber) => (
+                        <SelectItem key={barber.id} value={barber.id}>
+                          {barber.fullName}
+                        </SelectItem>
+                      ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="rescheduleReason">Motivo</Label>
+              <Input
+                id="rescheduleReason"
+                value={rescheduleReason}
+                onChange={(event) => setRescheduleReason(event.target.value)}
+                placeholder="Cambio solicitado por el cliente"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRescheduleTarget(null)}>Cancelar</Button>
+            <Button onClick={() => void handleReschedule()} disabled={saving || !rescheduleStart}>
+              {saving ? 'Guardando…' : 'Reprogramar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Cancel confirmation dialog */}
       <Dialog open={!!cancelTarget} onOpenChange={(o) => !o && setCancelTarget(null)}>
         <DialogContent className="sm:max-w-sm">
@@ -545,4 +663,19 @@ export default function AgendaPage() {
       </Dialog>
     </div>
   )
+}
+
+function toDateTimeLocal(value: string): string {
+  const date = new Date(value)
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Argentina/Buenos_Aires',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date)
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+  return `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}`
 }
