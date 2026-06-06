@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { CalendarDays, Users, DollarSign, BarChart2, Home } from 'lucide-react'
+import { CalendarDays, Users, DollarSign, BarChart2, Home, Settings2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 type Role = 'admin' | 'receptionist' | 'barber'
@@ -8,6 +8,7 @@ const navItems = [
   { href: '/dashboard', label: 'Inicio', icon: Home, roles: ['admin', 'receptionist', 'barber'] as Role[] },
   { href: '/agenda', label: 'Agenda', icon: CalendarDays, roles: ['admin', 'receptionist', 'barber'] as Role[] },
   { href: '/clientes', label: 'Clientes', icon: Users, roles: ['admin', 'receptionist', 'barber'] as Role[] },
+  { href: '/operacion', label: 'Operación', icon: Settings2, roles: ['admin'] as Role[] },
   { href: '/caja', label: 'Caja', icon: DollarSign, roles: ['admin', 'receptionist'] as Role[], disabled: true },
   { href: '/comisiones', label: 'Comisiones', icon: BarChart2, roles: ['admin'] as Role[], disabled: true },
 ]
