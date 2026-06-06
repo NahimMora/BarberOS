@@ -255,11 +255,11 @@ async function main() {
   // 7. Clients
   console.log('\nSeeding clients...')
   const clientSeed = [
-    { firstName: 'Martín', lastName: 'García', whatsappRaw: '1155550001' },
-    { firstName: 'Lucas', lastName: 'Pérez', whatsappRaw: '1155550002' },
-    { firstName: 'Sebastián', lastName: 'López', whatsappRaw: '1155550003' },
-    { firstName: 'Diego', lastName: 'Fernández', whatsappRaw: '1155550004' },
-    { firstName: 'Gonzalo', lastName: 'Rodríguez', whatsappRaw: '1155550005' },
+    { firstName: 'Martín', lastName: 'García', whatsappRaw: '+5491123456789' },
+    { firstName: 'Lucas', lastName: 'Pérez', whatsappRaw: '+5491123456790' },
+    { firstName: 'Sebastián', lastName: 'López', whatsappRaw: '+5491123456791' },
+    { firstName: 'Diego', lastName: 'Fernández', whatsappRaw: '+5491123456792' },
+    { firstName: 'Gonzalo', lastName: 'Rodríguez', whatsappRaw: '+5491123456793' },
   ]
 
   const clientIds: string[] = []
@@ -361,14 +361,13 @@ async function main() {
       const endAt = new Date(startAt.getTime() + svc[0].durationMinutes * 60000)
 
       // Skip if an appointment already exists for this barber at this exact time
-      const { sql: sqlHelper } = await import('drizzle-orm')
       const overlap = await db
         .select({ id: appointments.id })
         .from(appointments)
         .where(
           and(
             eq(appointments.barberId, barberoId),
-            sqlHelper`${appointments.startAt} = ${startAt}`,
+            eq(appointments.startAt, startAt),
           ),
         )
         .limit(1)

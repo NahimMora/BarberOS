@@ -1,11 +1,11 @@
-import { parsePhoneNumber, isValidPhoneNumber } from 'libphonenumber-js'
+import { parsePhoneNumberWithError } from 'libphonenumber-js/core'
+import metadata from 'libphonenumber-js/metadata.max'
 
 export function normalizePhone(raw: string): string | null {
   if (!raw || !raw.trim()) return null
   try {
-    if (!isValidPhoneNumber(raw, 'AR')) return null
-    const phone = parsePhoneNumber(raw, 'AR')
-    return phone.format('E.164')
+    const phone = parsePhoneNumberWithError(raw, 'AR', metadata)
+    return phone.isValid() ? phone.number : null
   } catch {
     return null
   }
