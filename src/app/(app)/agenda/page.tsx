@@ -63,6 +63,7 @@ type Appointment = {
   startAt: string
   endAt: string
   notes: string | null
+  saleId: string | null
 }
 
 type Client = { id: string; firstName: string | null; lastName: string | null; whatsappRaw: string | null }
@@ -206,6 +207,7 @@ export default function AgendaPage() {
       setChargeTarget(null)
       setChargeDiscount('0.00')
       setChargeMethod('cash')
+      await fetchAppointments()
     } finally {
       setCharging(false)
     }
@@ -468,7 +470,7 @@ export default function AgendaPage() {
                             <Check className="text-success" />
                           </Button>
                         )}
-                        {a.status === 'completed' && (
+                        {a.status === 'completed' && !a.saleId && (
                           <Button
                             variant="ghost"
                             size="icon"
@@ -937,7 +939,7 @@ function AppointmentMobileCard({
               Completar
             </Button>
           ) : null}
-          {appointment.status === 'completed' ? (
+          {appointment.status === 'completed' && !appointment.saleId ? (
             <Button size="sm" className="min-h-10" onClick={() => onCharge(appointment)}>
               <CircleDollarSign data-icon="inline-start" />
               Cobrar

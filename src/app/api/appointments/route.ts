@@ -10,6 +10,7 @@ import {
   clients,
   domainEvents,
   organizationSettings,
+  sales,
   services,
   userBranches,
   users,
@@ -92,9 +93,17 @@ export async function GET(req: Request) {
       startAt: appointments.startAt,
       endAt: appointments.endAt,
       notes: appointments.notes,
+      saleId: sales.id,
     })
     .from(appointments)
     .leftJoin(clients, eq(clients.id, appointments.clientId))
+    .leftJoin(
+      sales,
+      and(
+        eq(sales.appointmentId, appointments.id),
+        eq(sales.organizationId, user.organizationId),
+      ),
+    )
     .where(and(...conditions))
     .orderBy(appointments.startAt)
     .limit(200)
