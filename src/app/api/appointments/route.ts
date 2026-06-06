@@ -1,17 +1,19 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { eq, and, sql } from 'drizzle-orm'
+import { eq, and, gte, inArray, lt } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import {
   appointments,
   appointmentServices,
   appointmentHistory,
   domainEvents,
+  organizationSettings,
   services,
 } from '@/db/schema'
 import { getSession } from '@/lib/auth/get-session'
 import { validateNoOverlap, validateBarberAvailability, validateBranchWorkingHours, OverlapError, AvailabilityError } from '@/lib/appointments/validate'
 import { branches } from '@/db/schema'
+import { getLocalDayUtcRange } from '@/lib/datetime/local-day-range'
 
 const createSchema = z.object({
   branchId: z.string().uuid(),
@@ -37,15 +39,23 @@ export async function GET(req: Request) {
 
   if (barberId) conditions.push(eq(appointments.barberId, barberId))
   if (branchId) conditions.push(eq(appointments.branchId, branchId))
-  if (status) conditions.push(sql`${appointments.status} = ${status}`)
+  if (status && ['scheduled', 'confirmed', 'in_progress', 'completed', 'cancelled', 'no_show'].includes(status)) {
+    conditions.push(eq(appointments.status, status as typeof appointments.status.enumValues[number]))
+  }
   if (date) {
-    const [year, month, day] = date.split('-').map(Number)
-    const dayStart = new Date(Date.UTC(year, month - 1, day, 0, 0, 0))
-    const dayEnd = new Date(Date.UTC(year, month - 1, day, 23, 59, 59))
-    conditions.push(
-      sql`${appointments.startAt} >= ${dayStart}`,
-      sql`${appointments.startAt} <= ${dayEnd}`,
-    )
+    const [settings] = await db
+      .select({ defaultTimezone: organizationSettings.defaultTimezone })
+      .from(organizationSettings)
+      .where(eq(organizationSettings.organizationId, user.organizationId))
+      .limit(1)
+    const timeZone = settings?.defaultTimezone ?? 'America/Argentina/Buenos_Aires'
+
+    try {
+      const range = getLocalDayUtcRange(date, timeZone)
+      conditions.push(gte(appointments.startAt, range.start), lt(appointments.startAt, range.end))
+    } catch {
+      return NextResponse.json({ error: 'Fecha inválida' }, { status: 400 })
+    }
   }
 
   // Barbers only see their own appointments
@@ -82,7 +92,7 @@ export async function POST(req: Request) {
     .where(
       and(
         eq(services.organizationId, user.organizationId),
-        sql`${services.id} = ANY(${serviceIds})`,
+        inArray(services.id, serviceIds),
       ),
     )
 

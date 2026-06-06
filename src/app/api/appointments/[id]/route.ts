@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { eq, and, sql } from 'drizzle-orm'
+import { eq, and, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import {
   appointments,
@@ -214,7 +214,7 @@ async function handleReschedule(
       .where(
         and(
           eq(services.organizationId, current.organizationId),
-          sql`${services.id} = ANY(${data.serviceIds})`,
+          inArray(services.id, data.serviceIds),
         ),
       )
     totalDuration = serviceRows.reduce((a, s) => a + s.durationMinutes, 0)

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { eq, and, sql } from 'drizzle-orm'
+import { eq, and, gt, inArray, lt } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import {
   organizationSettings,
@@ -9,6 +9,7 @@ import {
   branches,
 } from '@/db/schema'
 import { getSession } from '@/lib/auth/get-session'
+import { getLocalDayUtcRange } from '@/lib/datetime/local-day-range'
 
 export async function GET(req: Request) {
   const user = await getSession()
@@ -37,15 +38,9 @@ export async function GET(req: Request) {
   const slotInterval = settings?.slotIntervalMinutes ?? 30
   const buffer = settings?.bufferMinutes ?? 5
 
-  // Parse date in UTC
-  const [year, month, day] = dateStr.split('-').map(Number)
-  const dayStart = new Date(Date.UTC(year, month - 1, day, 0, 0, 0))
-  const dayEnd = new Date(Date.UTC(year, month - 1, day, 23, 59, 59))
-  const weekday = dayStart.getUTCDay()
-
-  // Get branch timezone to adjust display, but store in UTC
+  // Get branch timezone for local calendar calculations.
   const [branch] = await db
-    .select({ workingHours: branches.workingHours })
+    .select({ workingHours: branches.workingHours, timezone: branches.timezone })
     .from(branches)
     .where(and(eq(branches.id, branchId), eq(branches.organizationId, user.organizationId)))
     .limit(1)
@@ -53,6 +48,19 @@ export async function GET(req: Request) {
   if (!branch) {
     return NextResponse.json({ error: 'Sucursal no encontrada' }, { status: 404 })
   }
+
+  const timeZone = branch.timezone ?? 'America/Argentina/Buenos_Aires'
+  let dayStart: Date
+  let dayEnd: Date
+  try {
+    const range = getLocalDayUtcRange(dateStr, timeZone)
+    dayStart = range.start
+    dayEnd = range.end
+  } catch {
+    return NextResponse.json({ error: 'Fecha inválida' }, { status: 400 })
+  }
+  const [year, month, day] = dateStr.split('-').map(Number)
+  const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay()
 
   // Get barber schedule for this weekday
   const schedules = await db
@@ -80,8 +88,8 @@ export async function GET(req: Request) {
       and(
         eq(barberTimeOff.organizationId, user.organizationId),
         eq(barberTimeOff.barberId, barberId),
-        sql`${barberTimeOff.startAt} < ${dayEnd}`,
-        sql`${barberTimeOff.endAt} > ${dayStart}`,
+        lt(barberTimeOff.startAt, dayEnd),
+        gt(barberTimeOff.endAt, dayStart),
       ),
     )
 
@@ -93,9 +101,9 @@ export async function GET(req: Request) {
       and(
         eq(appointments.organizationId, user.organizationId),
         eq(appointments.barberId, barberId),
-        sql`${appointments.status} IN ('scheduled','confirmed','in_progress')`,
-        sql`${appointments.startAt} < ${dayEnd}`,
-        sql`${appointments.endAt} > ${dayStart}`,
+        inArray(appointments.status, ['scheduled', 'confirmed', 'in_progress']),
+        lt(appointments.startAt, dayEnd),
+        gt(appointments.endAt, dayStart),
       ),
     )
 
@@ -106,8 +114,9 @@ export async function GET(req: Request) {
     const [sh, sm] = schedule.startTime.split(':').map(Number)
     const [eh, em] = schedule.endTime.split(':').map(Number)
 
-    let slotStart = new Date(Date.UTC(year, month - 1, day, sh, sm, 0))
-    const scheduleEnd = new Date(Date.UTC(year, month - 1, day, eh, em, 0))
+    const offsetMs = dayStart.getTime() - Date.UTC(year, month - 1, day)
+    let slotStart = new Date(Date.UTC(year, month - 1, day, sh, sm, 0) + offsetMs)
+    const scheduleEnd = new Date(Date.UTC(year, month - 1, day, eh, em, 0) + offsetMs)
 
     while (slotStart.getTime() + durationMinutes * 60000 <= scheduleEnd.getTime()) {
       const slotEnd = new Date(slotStart.getTime() + durationMinutes * 60000)
