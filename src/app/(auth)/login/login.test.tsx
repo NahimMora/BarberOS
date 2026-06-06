@@ -2,12 +2,10 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import LoginPage from './page'
 
-// Mock next/navigation
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
 }))
 
-// Mock supabase client
 vi.mock('@/lib/supabase/client', () => ({
   createClient: () => ({
     auth: {
@@ -30,6 +28,6 @@ describe('LoginPage', () => {
 
   it('renders BarberOS title', () => {
     render(<LoginPage />)
-    expect(screen.getByText('BarberOS')).toBeInTheDocument()
+    expect(screen.getAllByText('BarberOS').length).toBeGreaterThan(0)
   })
 })

@@ -5,6 +5,16 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { Card, CardContent } from '@/components/ui/card'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
+import { Skeleton } from '@/components/ui/skeleton'
+import { PageHeader } from '@/components/page-header'
 import {
   Dialog,
   DialogContent,
@@ -29,7 +39,16 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { toast } from 'sonner'
-import { Plus, ChevronLeft, ChevronRight, Check, X, Minus, CalendarSync } from 'lucide-react'
+import {
+  CalendarClock,
+  CalendarSync,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Minus,
+  Plus,
+  X,
+} from 'lucide-react'
 
 type Appointment = {
   id: string
@@ -271,40 +290,77 @@ export default function AgendaPage() {
     }
   }
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Agenda</h1>
-        <Button onClick={openNew} size="sm">
-          <Plus className="h-4 w-4 mr-1" /> Nuevo turno
-        </Button>
-      </div>
+  const activeCount = appointments.filter((appointment) =>
+    ['scheduled', 'confirmed', 'in_progress'].includes(appointment.status),
+  ).length
+  const completedCount = appointments.filter((appointment) => appointment.status === 'completed').length
+  const issueCount = appointments.filter((appointment) =>
+    ['cancelled', 'no_show'].includes(appointment.status),
+  ).length
+  const formattedDate = new Intl.DateTimeFormat('es-AR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(`${date}T12:00:00Z`))
 
-      {/* Date navigation */}
-      <div className="flex items-center gap-2">
-        <Button variant="outline" size="icon" onClick={() => changeDate(-1)}>
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        <Input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="w-40"
-        />
-        <Button variant="outline" size="icon" onClick={() => changeDate(1)}>
-          <ChevronRight className="h-4 w-4" />
-        </Button>
-        {date !== today && (
-          <Button variant="ghost" size="sm" onClick={() => setDate(today)}>
-            Hoy
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        eyebrow="Agenda diaria"
+        title="Turnos"
+        description="Organizá la jornada, resolvé cambios y avanzá cada atención desde un único lugar."
+        actions={(
+          <Button onClick={openNew} size="lg" className="min-h-10">
+            <Plus data-icon="inline-start" />
+            Nuevo turno
           </Button>
         )}
-      </div>
+      />
+
+      <Card className="paper-surface">
+        <CardContent className="flex flex-col gap-5 py-1">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">Fecha de trabajo</p>
+              <p className="mt-1 font-heading text-2xl font-semibold capitalize">{formattedDate}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" size="icon-lg" aria-label="Día anterior" onClick={() => changeDate(-1)}>
+                <ChevronLeft aria-hidden="true" />
+              </Button>
+              <Input
+                aria-label="Fecha de agenda"
+                type="date"
+                value={date}
+                onChange={(event) => setDate(event.target.value)}
+                className="w-42 bg-card"
+              />
+              <Button variant="outline" size="icon-lg" aria-label="Día siguiente" onClick={() => changeDate(1)}>
+                <ChevronRight aria-hidden="true" />
+              </Button>
+              {date !== today ? (
+                <Button variant="secondary" onClick={() => setDate(today)}>Volver a hoy</Button>
+              ) : null}
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-2 border-t border-border/70 pt-4">
+            <AgendaStat label="Pendientes" value={activeCount} tone="primary" />
+            <AgendaStat label="Completados" value={completedCount} tone="success" />
+            <AgendaStat label="Incidencias" value={issueCount} tone="warning" />
+          </div>
+        </CardContent>
+      </Card>
 
       {loading ? (
-        <p className="text-sm text-muted-foreground">Cargando…</p>
+        <div className="flex flex-col gap-3" aria-label="Cargando turnos">
+          {[0, 1, 2].map((item) => (
+            <Skeleton key={item} className="h-20 rounded-2xl" />
+          ))}
+        </div>
       ) : (
-        <div className="rounded-md border">
+        <div className="hidden overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -348,9 +404,10 @@ export default function AgendaPage() {
                             variant="ghost"
                             size="icon"
                             title="Confirmar"
+                            aria-label="Confirmar turno"
                             onClick={() => updateStatus(a.id, 'confirmed')}
                           >
-                            <Check className="h-4 w-4 text-green-600" />
+                            <Check className="text-success" />
                           </Button>
                         )}
                         {a.status === 'confirmed' && (
@@ -358,9 +415,10 @@ export default function AgendaPage() {
                             variant="ghost"
                             size="icon"
                             title="Iniciar atención"
+                            aria-label="Iniciar atención"
                             onClick={() => updateStatus(a.id, 'in_progress')}
                           >
-                            <Check className="h-4 w-4 text-green-600" />
+                            <Check className="text-success" />
                           </Button>
                         )}
                         {a.status === 'in_progress' && (
@@ -368,9 +426,10 @@ export default function AgendaPage() {
                             variant="ghost"
                             size="icon"
                             title="Completar"
+                            aria-label="Completar turno"
                             onClick={() => updateStatus(a.id, 'completed')}
                           >
-                            <Check className="h-4 w-4 text-green-600" />
+                            <Check className="text-success" />
                           </Button>
                         )}
                         {(a.status === 'scheduled' || a.status === 'confirmed') && (
@@ -379,25 +438,28 @@ export default function AgendaPage() {
                               variant="ghost"
                               size="icon"
                               title="Reprogramar"
+                              aria-label="Reprogramar turno"
                               onClick={() => void openReschedule(a)}
                             >
-                              <CalendarSync className="h-4 w-4" />
+                              <CalendarSync />
                             </Button>
                             <Button
                               variant="ghost"
                               size="icon"
                               title="No se presentó"
+                              aria-label="Marcar ausencia"
                               onClick={() => updateStatus(a.id, 'no_show')}
                             >
-                              <Minus className="h-4 w-4 text-yellow-600" />
+                              <Minus className="text-warning" />
                             </Button>
                             <Button
                               variant="ghost"
                               size="icon"
                               title="Cancelar"
+                              aria-label="Cancelar turno"
                               onClick={() => { setCancelTarget(a); setCancelReason('') }}
                             >
-                              <X className="h-4 w-4 text-red-600" />
+                              <X className="text-destructive" />
                             </Button>
                           </>
                         )}
@@ -410,6 +472,33 @@ export default function AgendaPage() {
           </Table>
         </div>
       )}
+
+      {!loading ? (
+        <div className="flex flex-col gap-3 md:hidden">
+          {appointments.length === 0 ? (
+            <Empty className="border bg-card">
+              <EmptyHeader>
+                <EmptyMedia variant="icon"><CalendarClock /></EmptyMedia>
+                <EmptyTitle>Sin turnos para este día</EmptyTitle>
+                <EmptyDescription>Podés crear un turno o avanzar a otra fecha.</EmptyDescription>
+              </EmptyHeader>
+            </Empty>
+          ) : (
+            appointments.map((appointment) => (
+              <AppointmentMobileCard
+                key={appointment.id}
+                appointment={appointment}
+                onStatusChange={updateStatus}
+                onReschedule={openReschedule}
+                onCancel={(target) => {
+                  setCancelTarget(target)
+                  setCancelReason('')
+                }}
+              />
+            ))
+          )}
+        </div>
+      ) : null}
 
       {/* New appointment dialog */}
       <Dialog open={newOpen} onOpenChange={setNewOpen}>
@@ -662,6 +751,107 @@ export default function AgendaPage() {
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+function AgendaStat({
+  label,
+  value,
+  tone,
+}: {
+  label: string
+  value: number
+  tone: 'primary' | 'success' | 'warning'
+}) {
+  const toneClass = {
+    primary: 'text-primary',
+    success: 'text-success',
+    warning: 'text-warning-foreground',
+  }[tone]
+
+  return (
+    <div className="rounded-xl bg-muted/55 px-3 py-3 sm:px-4">
+      <p className="text-[0.65rem] font-bold uppercase tracking-[0.12em] text-muted-foreground">{label}</p>
+      <p className={`mt-1 font-mono text-2xl font-semibold tabular-nums ${toneClass}`}>{value}</p>
+    </div>
+  )
+}
+
+function AppointmentMobileCard({
+  appointment,
+  onStatusChange,
+  onReschedule,
+  onCancel,
+}: {
+  appointment: Appointment
+  onStatusChange: (id: string, status: string, reason?: string) => Promise<void>
+  onReschedule: (appointment: Appointment) => Promise<void>
+  onCancel: (appointment: Appointment) => void
+}) {
+  const start = new Date(appointment.startAt).toLocaleTimeString('es-AR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'America/Argentina/Buenos_Aires',
+  })
+  const end = new Date(appointment.endAt).toLocaleTimeString('es-AR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'America/Argentina/Buenos_Aires',
+  })
+  const clientName = [appointment.clientFirstName, appointment.clientLastName]
+    .filter(Boolean)
+    .join(' ') || 'Walk-in'
+
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-4 py-1">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-heading text-xl font-semibold">{clientName}</p>
+            <p className="mt-1 font-mono text-sm font-semibold tabular-nums text-muted-foreground">
+              {start} - {end}
+            </p>
+          </div>
+          <Badge variant={STATUS_VARIANTS[appointment.status] ?? 'outline'}>
+            {STATUS_LABELS[appointment.status] ?? appointment.status}
+          </Badge>
+        </div>
+        <div className="flex flex-wrap gap-2 border-t border-border/70 pt-3">
+          {appointment.status === 'scheduled' ? (
+            <Button size="sm" className="min-h-10" onClick={() => void onStatusChange(appointment.id, 'confirmed')}>
+              <Check data-icon="inline-start" />
+              Confirmar
+            </Button>
+          ) : null}
+          {appointment.status === 'confirmed' ? (
+            <Button size="sm" className="min-h-10" onClick={() => void onStatusChange(appointment.id, 'in_progress')}>
+              <Check data-icon="inline-start" />
+              Iniciar
+            </Button>
+          ) : null}
+          {appointment.status === 'in_progress' ? (
+            <Button size="sm" className="min-h-10" onClick={() => void onStatusChange(appointment.id, 'completed')}>
+              <Check data-icon="inline-start" />
+              Completar
+            </Button>
+          ) : null}
+          {['scheduled', 'confirmed'].includes(appointment.status) ? (
+            <>
+              <Button variant="outline" size="sm" className="min-h-10" onClick={() => void onReschedule(appointment)}>
+                <CalendarSync data-icon="inline-start" />
+                Reprogramar
+              </Button>
+              <Button variant="ghost" size="sm" className="min-h-10" onClick={() => void onStatusChange(appointment.id, 'no_show')}>
+                Ausente
+              </Button>
+              <Button variant="destructive" size="sm" className="min-h-10" onClick={() => onCancel(appointment)}>
+                Cancelar
+              </Button>
+            </>
+          ) : null}
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 

@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { PageHeader } from '@/components/page-header'
 import {
   Card,
   CardContent,
@@ -47,6 +48,7 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
+import { Skeleton } from '@/components/ui/skeleton'
 
 type Branch = {
   id: string
@@ -445,23 +447,32 @@ export function OperationConsole() {
   }
 
   if (loading) {
-    return <p className="text-sm text-muted-foreground">Cargando operación...</p>
+    return (
+      <div className="flex flex-col gap-4" aria-label="Cargando operación">
+        <Skeleton className="h-28 rounded-2xl" />
+        <Skeleton className="h-12 rounded-xl" />
+        <Skeleton className="h-80 rounded-2xl" />
+      </div>
+    )
   }
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-1">
-        <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
-          Configuración del negocio
-        </p>
-        <h1 className="text-3xl font-semibold tracking-tight">Operación</h1>
-        <p className="max-w-2xl text-sm text-muted-foreground">
-          Sucursales, equipo, servicios y disponibilidad que alimentan la agenda.
-        </p>
-      </header>
+      <PageHeader
+        eyebrow="Configuración del negocio"
+        title="Operación"
+        description="Definí la estructura que alimenta la agenda: sucursales, personas, servicios y disponibilidad."
+      />
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <OperationStat label="Sucursales" value={branches.filter((branch) => branch.active).length} />
+        <OperationStat label="Equipo activo" value={staff.filter((member) => member.status === 'active').length} />
+        <OperationStat label="Servicios" value={services.filter((service) => service.active).length} />
+        <OperationStat label="Horarios" value={schedules.filter((schedule) => schedule.active).length} />
+      </div>
 
       <Tabs defaultValue="branches">
-        <TabsList variant="line" className="w-full justify-start overflow-x-auto">
+        <TabsList variant="line" className="w-full justify-start overflow-x-auto rounded-xl border border-border/70 bg-card px-2">
           <TabsTrigger value="branches"><MapPin data-icon="inline-start" />Sucursales</TabsTrigger>
           <TabsTrigger value="staff"><UserRoundCog data-icon="inline-start" />Equipo</TabsTrigger>
           <TabsTrigger value="services"><Scissors data-icon="inline-start" />Servicios</TabsTrigger>
@@ -618,8 +629,17 @@ function ResourceCard({ title, description, action, children }: {
         <div className="flex flex-col gap-1"><CardTitle>{title}</CardTitle><CardDescription>{description}</CardDescription></div>
         {action}
       </CardHeader>
-      <CardContent>{children}</CardContent>
+      <CardContent><div className="overflow-x-auto">{children}</div></CardContent>
     </Card>
+  )
+}
+
+function OperationStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="paper-surface rounded-2xl border border-border/70 p-4 shadow-sm">
+      <p className="text-[0.65rem] font-bold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
+      <p className="mt-2 font-mono text-2xl font-semibold tabular-nums text-primary">{value}</p>
+    </div>
   )
 }
 

@@ -1,10 +1,10 @@
 import type { Metadata } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
+import { Geist_Mono, Manrope, Newsreader } from 'next/font/google'
 import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
 
-const geistSans = Geist({
-  variable: '--font-geist-sans',
+const manrope = Manrope({
+  variable: '--font-manrope',
   subsets: ['latin'],
 })
 
@@ -13,15 +13,20 @@ const geistMono = Geist_Mono({
   subsets: ['latin'],
 })
 
+const newsreader = Newsreader({
+  variable: '--font-newsreader',
+  subsets: ['latin'],
+})
+
 export const metadata: Metadata = {
   title: 'BarberOS',
-  description: 'Plataforma de gestión para barbería',
+  description: 'Plataforma operativa para barberías',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+      <body className={`${manrope.variable} ${newsreader.variable} ${geistMono.variable} antialiased`}>
         {children}
         <Toaster />
       </body>
