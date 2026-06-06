@@ -45,6 +45,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  CircleDollarSign,
   Minus,
   Plus,
   X,
@@ -128,6 +129,10 @@ export default function AgendaPage() {
   const [rescheduleStart, setRescheduleStart] = useState('')
   const [rescheduleBarberId, setRescheduleBarberId] = useState('')
   const [rescheduleReason, setRescheduleReason] = useState('')
+  const [chargeTarget, setChargeTarget] = useState<Appointment | null>(null)
+  const [chargeDiscount, setChargeDiscount] = useState('0.00')
+  const [chargeMethod, setChargeMethod] = useState('cash')
+  const [charging, setCharging] = useState(false)
 
   const fetchAppointments = useCallback(async () => {
     setLoading(true)
@@ -173,6 +178,37 @@ export default function AgendaPage() {
     setNewOpen(true)
     setSlots([])
     setSelectedSlot('')
+  }
+
+  async function chargeAppointment() {
+    if (!chargeTarget) return
+    setCharging(true)
+    try {
+      const response = await fetch('/api/sales', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          branchId: chargeTarget.branchId,
+          barberId: chargeTarget.barberId,
+          clientId: chargeTarget.clientId,
+          appointmentId: chargeTarget.id,
+          discount: chargeDiscount || '0.00',
+          paymentMethod: chargeMethod,
+        }),
+      })
+      const result = await response.json()
+      if (!response.ok) {
+        toast.error(typeof result.error === 'string' ? result.error : 'No se pudo cobrar el turno')
+        return
+      }
+      toast.success('Cobro registrado')
+      if (result.warning) toast.warning(result.warning)
+      setChargeTarget(null)
+      setChargeDiscount('0.00')
+      setChargeMethod('cash')
+    } finally {
+      setCharging(false)
+    }
   }
 
   async function openReschedule(appointment: Appointment) {
@@ -432,6 +468,17 @@ export default function AgendaPage() {
                             <Check className="text-success" />
                           </Button>
                         )}
+                        {a.status === 'completed' && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Cobrar"
+                            aria-label="Cobrar turno"
+                            onClick={() => setChargeTarget(a)}
+                          >
+                            <CircleDollarSign className="text-primary" />
+                          </Button>
+                        )}
                         {(a.status === 'scheduled' || a.status === 'confirmed') && (
                           <>
                             <Button
@@ -494,6 +541,7 @@ export default function AgendaPage() {
                   setCancelTarget(target)
                   setCancelReason('')
                 }}
+                onCharge={setChargeTarget}
               />
             ))
           )}
@@ -750,6 +798,58 @@ export default function AgendaPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={!!chargeTarget} onOpenChange={(open) => !open && setChargeTarget(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Cobrar turno</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <div className="rounded-xl bg-secondary p-3 text-sm">
+              Se cobrarán los servicios y precios guardados al crear el turno.
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="chargeDiscount">Descuento</Label>
+              <Input
+                id="chargeDiscount"
+                inputMode="decimal"
+                value={chargeDiscount}
+                onChange={(event) => setChargeDiscount(event.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label>Medio de pago</Label>
+              <Select
+                items={[
+                  { value: 'cash', label: 'Efectivo' },
+                  { value: 'transfer', label: 'Transferencia' },
+                  { value: 'card', label: 'Tarjeta' },
+                  { value: 'mercadopago_manual', label: 'Mercado Pago' },
+                  { value: 'other', label: 'Otro' },
+                ]}
+                value={chargeMethod}
+                onValueChange={(value) => setChargeMethod(value ?? 'cash')}
+              >
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectGroup>
+                  <SelectItem value="cash">Efectivo</SelectItem>
+                  <SelectItem value="transfer">Transferencia</SelectItem>
+                  <SelectItem value="card">Tarjeta</SelectItem>
+                  <SelectItem value="mercadopago_manual">Mercado Pago</SelectItem>
+                  <SelectItem value="other">Otro</SelectItem>
+                </SelectGroup></SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setChargeTarget(null)}>Cancelar</Button>
+            <Button disabled={charging} onClick={() => void chargeAppointment()}>
+              <CircleDollarSign />
+              {charging ? 'Cobrando...' : 'Confirmar cobro'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -782,11 +882,13 @@ function AppointmentMobileCard({
   onStatusChange,
   onReschedule,
   onCancel,
+  onCharge,
 }: {
   appointment: Appointment
   onStatusChange: (id: string, status: string, reason?: string) => Promise<void>
   onReschedule: (appointment: Appointment) => Promise<void>
   onCancel: (appointment: Appointment) => void
+  onCharge: (appointment: Appointment) => void
 }) {
   const start = new Date(appointment.startAt).toLocaleTimeString('es-AR', {
     hour: '2-digit',
@@ -833,6 +935,12 @@ function AppointmentMobileCard({
             <Button size="sm" className="min-h-10" onClick={() => void onStatusChange(appointment.id, 'completed')}>
               <Check data-icon="inline-start" />
               Completar
+            </Button>
+          ) : null}
+          {appointment.status === 'completed' ? (
+            <Button size="sm" className="min-h-10" onClick={() => onCharge(appointment)}>
+              <CircleDollarSign data-icon="inline-start" />
+              Cobrar
             </Button>
           ) : null}
           {['scheduled', 'confirmed'].includes(appointment.status) ? (

@@ -49,6 +49,20 @@ const actions = [
     icon: Settings2,
     roles: ['admin'],
   },
+  {
+    href: '/caja',
+    title: 'Operar caja',
+    description: 'Cobrar ventas, registrar movimientos y cerrar la jornada.',
+    icon: CircleDollarSign,
+    roles: ['admin', 'receptionist'],
+  },
+  {
+    href: '/comisiones',
+    title: 'Ver comisiones',
+    description: 'Consultar importes por período y liquidar pendientes.',
+    icon: CircleDollarSign,
+    roles: ['admin', 'barber'],
+  },
 ]
 
 export default async function DashboardPage() {

@@ -10,18 +10,26 @@ import {
   Settings2,
   Users,
 } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { BrandMark } from '@/components/brand-mark'
 import { cn } from '@/lib/utils'
 
 type Role = 'admin' | 'receptionist' | 'barber'
 
-const navItems = [
+const navItems: {
+  href: string
+  label: string
+  icon: LucideIcon
+  roles: Role[]
+  disabled?: boolean
+  mobile?: boolean
+}[] = [
   { href: '/dashboard', label: 'Inicio', icon: House, roles: ['admin', 'receptionist', 'barber'] as Role[] },
   { href: '/agenda', label: 'Agenda', icon: CalendarDays, roles: ['admin', 'receptionist', 'barber'] as Role[] },
   { href: '/clientes', label: 'Clientes', icon: Users, roles: ['admin', 'receptionist', 'barber'] as Role[] },
-  { href: '/operacion', label: 'Operación', icon: Settings2, roles: ['admin'] as Role[] },
-  { href: '/caja', label: 'Caja', icon: DollarSign, roles: ['admin', 'receptionist'] as Role[], disabled: true },
-  { href: '/comisiones', label: 'Comisiones', icon: ChartNoAxesCombined, roles: ['admin'] as Role[], disabled: true },
+  { href: '/operacion', label: 'Operación', icon: Settings2, roles: ['admin'] as Role[], mobile: false },
+  { href: '/caja', label: 'Caja', icon: DollarSign, roles: ['admin', 'receptionist'] as Role[] },
+  { href: '/comisiones', label: 'Comisiones', icon: ChartNoAxesCombined, roles: ['admin', 'barber'] as Role[] },
 ]
 
 export function AppSidebar({ role }: { role: Role }) {
@@ -76,7 +84,9 @@ export function AppSidebar({ role }: { role: Role }) {
 
 export function MobileNavigation({ role }: { role: Role }) {
   const pathname = usePathname()
-  const visible = navItems.filter((item) => item.roles.includes(role) && !item.disabled)
+  const visible = navItems.filter(
+    (item) => item.roles.includes(role) && !item.disabled && item.mobile !== false,
+  )
 
   return (
     <nav className="fixed inset-x-3 bottom-3 z-40 flex min-h-16 items-stretch justify-around rounded-2xl border border-border/70 bg-card/95 p-1.5 shadow-xl backdrop-blur-xl md:hidden">
