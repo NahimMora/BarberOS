@@ -814,7 +814,13 @@ function ProfileDialog({ open, onOpenChange, profile, onChange, onFileChange, on
             </Field>
             <div className="mt-2 flex flex-wrap gap-2">
               {profile.documents.map((document) => (
-                <Button key={document.id} variant="outline" size="sm" render={<a href={`/api/files/${document.id}/download`} target="_blank" rel="noreferrer" />}>
+                <Button
+                  key={document.id}
+                  variant="outline"
+                  size="sm"
+                  nativeButton={false}
+                  render={<a href={`/api/files/${document.id}/download`} target="_blank" rel="noreferrer" />}
+                >
                   <FileUp data-icon="inline-start" />{document.originalFilename}
                 </Button>
               ))}
