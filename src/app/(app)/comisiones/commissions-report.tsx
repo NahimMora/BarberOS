@@ -57,6 +57,9 @@ type Entry = {
   barberName: string
   saleId: string
   branchId: string
+  branchName: string
+  clientName: string | null
+  services: string[]
   baseAmount: string
   rateSnapshot: string
   commissionAmount: string
@@ -285,14 +288,19 @@ export function CommissionsReport({ role }: { role: 'admin' | 'barber' }) {
         <Card>
           <CardHeader>
             <CardTitle>Detalle por venta</CardTitle>
-            <CardDescription>Base, tasa congelada e importe generado en cada cobro.</CardDescription>
+            <CardDescription>
+              Servicio, cliente y sucursal de cada cobro — la base y la tasa quedan congeladas al momento del pago.
+            </CardDescription>
           </CardHeader>
           <CardContent className="overflow-x-auto px-0">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Fecha</TableHead>
-                  <TableHead>Barbero</TableHead>
+                  <TableHead>Fecha y hora</TableHead>
+                  {role === 'admin' ? <TableHead>Barbero</TableHead> : null}
+                  <TableHead>Servicio</TableHead>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead>Sucursal</TableHead>
                   <TableHead>Base</TableHead>
                   <TableHead>Tasa</TableHead>
                   <TableHead>Comisión</TableHead>
@@ -302,8 +310,17 @@ export function CommissionsReport({ role }: { role: 'admin' | 'barber' }) {
               <TableBody>
                 {report.entries.map((entry) => (
                   <TableRow key={entry.id}>
-                    <TableCell>{new Date(entry.paidAt).toLocaleDateString('es-AR')}</TableCell>
-                    <TableCell className="font-medium">{entry.barberName}</TableCell>
+                    <TableCell className="font-mono text-sm tabular-nums whitespace-nowrap">
+                      {new Date(entry.paidAt).toLocaleDateString('es-AR')}
+                      {' · '}
+                      {new Date(entry.paidAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                    </TableCell>
+                    {role === 'admin' ? <TableCell className="font-medium">{entry.barberName}</TableCell> : null}
+                    <TableCell className="max-w-48 truncate" title={entry.services.join(', ')}>
+                      {entry.services.length > 0 ? entry.services.join(', ') : '—'}
+                    </TableCell>
+                    <TableCell>{entry.clientName ?? 'Walk-in'}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{entry.branchName}</TableCell>
                     <TableCell>{formatArs(entry.baseAmount)}</TableCell>
                     <TableCell>{entry.rateSnapshot}%</TableCell>
                     <TableCell className="font-bold">{formatArs(entry.commissionAmount)}</TableCell>

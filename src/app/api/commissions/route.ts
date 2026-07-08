@@ -4,8 +4,11 @@ import { and, asc, eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import {
   auditLogs,
+  branches,
+  clients,
   commissions,
   domainEvents,
+  saleItems,
   sales,
   users,
 } from '@/db/schema'
@@ -53,6 +56,9 @@ export async function GET(req: Request) {
       barberName: users.fullName,
       saleId: commissions.saleId,
       branchId: sales.branchId,
+      branchName: branches.name,
+      clientName: clients.firstName,
+      clientLastName: clients.lastName,
       baseAmount: commissions.baseAmount,
       rateSnapshot: commissions.rateSnapshot,
       commissionAmount: commissions.commissionAmount,
@@ -63,8 +69,23 @@ export async function GET(req: Request) {
     .from(commissions)
     .innerJoin(users, eq(users.id, commissions.barberId))
     .innerJoin(sales, eq(sales.id, commissions.saleId))
+    .innerJoin(branches, eq(branches.id, sales.branchId))
+    .leftJoin(clients, eq(clients.id, sales.clientId))
     .where(and(...conditions))
     .orderBy(asc(users.fullName), asc(sales.paidAt))
+
+  const itemRows = rows.length > 0
+    ? await db
+      .select({ saleId: saleItems.saleId, description: saleItems.description })
+      .from(saleItems)
+      .where(inArray(saleItems.saleId, rows.map((row) => row.saleId)))
+    : []
+  const servicesBySale = new Map<string, string[]>()
+  for (const item of itemRows) {
+    const current = servicesBySale.get(item.saleId) ?? []
+    current.push(item.description)
+    servicesBySale.set(item.saleId, current)
+  }
 
   const grouped = new Map<string, {
     barberId: string
@@ -106,7 +127,22 @@ export async function GET(req: Request) {
       pendingAmount: formatCents(entry.pendingAmount),
       paidAmount: formatCents(entry.paidAmount),
     })),
-    entries: rows,
+    entries: rows.map((row) => ({
+      id: row.id,
+      barberId: row.barberId,
+      barberName: row.barberName,
+      saleId: row.saleId,
+      branchId: row.branchId,
+      branchName: row.branchName,
+      clientName: [row.clientName, row.clientLastName].filter(Boolean).join(' ') || null,
+      services: servicesBySale.get(row.saleId) ?? [],
+      baseAmount: row.baseAmount,
+      rateSnapshot: row.rateSnapshot,
+      commissionAmount: row.commissionAmount,
+      period: row.period,
+      status: row.status,
+      paidAt: row.paidAt,
+    })),
   })
 }
 

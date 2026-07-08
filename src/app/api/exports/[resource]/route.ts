@@ -11,6 +11,7 @@ import { getSession } from '@/lib/auth/get-session'
 import { hasBranchAccess } from '@/lib/auth/authorization'
 import {
   getLocalCalendarMonth,
+  getLocalDayUtcRange,
 } from '@/lib/datetime/local-day-range'
 import { db } from '@/lib/db'
 import {
@@ -31,7 +32,11 @@ const paramsSchema = z.object({
 const querySchema = z.object({
   format: z.enum(['csv', 'xls']).default('csv'),
   period: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional(),
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   branch_id: z.string().uuid().optional(),
+}).refine((value) => Boolean(value.from) === Boolean(value.to), {
+  message: 'from y to deben usarse juntos',
 })
 
 export async function GET(
@@ -64,6 +69,30 @@ export async function GET(
     const timeZone = settings?.defaultTimezone ?? 'America/Argentina/Buenos_Aires'
     const period = parsedQuery.data.period ?? getLocalCalendarMonth(new Date(), timeZone)
 
+    let range: { start: Date; end: Date } | undefined
+    let periodLabel = period
+    if (parsedQuery.data.from && parsedQuery.data.to) {
+      if (resource === 'commissions') {
+        return NextResponse.json(
+          { error: 'Comisiones se exporta por período mensual completo, no por rango de fechas' },
+          { status: 400 },
+        )
+      }
+      if (parsedQuery.data.from > parsedQuery.data.to) {
+        return NextResponse.json(
+          { error: 'La fecha "desde" no puede ser posterior a "hasta"' },
+          { status: 400 },
+        )
+      }
+      range = {
+        start: getLocalDayUtcRange(parsedQuery.data.from, timeZone).start,
+        end: getLocalDayUtcRange(parsedQuery.data.to, timeZone).end,
+      }
+      periodLabel = parsedQuery.data.from === parsedQuery.data.to
+        ? parsedQuery.data.from
+        : `${parsedQuery.data.from}_a_${parsedQuery.data.to}`
+    }
+
     if (branchId) {
       if (!hasBranchAccess(user, branchId)) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
@@ -87,6 +116,8 @@ export async function GET(
       user,
       resource,
       period,
+      periodLabel,
+      range,
       branchId,
       timeZone,
     })
@@ -104,7 +135,9 @@ export async function GET(
       diff: {
         resource,
         format,
-        period,
+        period: periodLabel,
+        from: parsedQuery.data.from ?? null,
+        to: parsedQuery.data.to ?? null,
         branchId: branchId ?? null,
         rowCount: definition.rows.length,
       },

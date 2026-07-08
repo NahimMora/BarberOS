@@ -51,6 +51,10 @@ type ExportContext = {
   user: AppUser
   resource: ExportResource
   period: string
+  /** Label used in filenames — the raw period, or "from_a_to" for a custom day range. */
+  periodLabel: string
+  /** When set (custom day range or presets like "hoy"/"esta semana"), takes precedence over `period`. */
+  range?: { start: Date; end: Date }
   branchId?: string
   timeZone: string
 }
@@ -88,7 +92,7 @@ export async function buildExport(context: ExportContext): Promise<ExportDefinit
 }
 
 async function buildSalesExport(context: ExportContext): Promise<ExportDefinition> {
-  const range = getLocalMonthUtcRange(context.period, context.timeZone)
+  const range = context.range ?? getLocalMonthUtcRange(context.period, context.timeZone)
   const conditions: SQL[] = [
     eq(sales.organizationId, context.user.organizationId),
     eq(sales.status, 'paid'),
@@ -121,7 +125,7 @@ async function buildSalesExport(context: ExportContext): Promise<ExportDefinitio
     .limit(10_000)
 
   return {
-    filename: `ventas-${context.period}`,
+    filename: `ventas-${context.periodLabel}`,
     sheetName: 'Ventas',
     columns: [
       stringColumn('Fecha'),
@@ -204,7 +208,7 @@ async function buildCommissionsExport(context: ExportContext): Promise<ExportDef
 }
 
 async function buildCashExport(context: ExportContext): Promise<ExportDefinition> {
-  const range = getLocalMonthUtcRange(context.period, context.timeZone)
+  const range = context.range ?? getLocalMonthUtcRange(context.period, context.timeZone)
   const conditions: SQL[] = [
     eq(cashSessions.organizationId, context.user.organizationId),
     gte(cashSessions.openedAt, range.start),
@@ -236,7 +240,7 @@ async function buildCashExport(context: ExportContext): Promise<ExportDefinition
     .limit(10_000)
 
   return {
-    filename: `caja-${context.period}`,
+    filename: `caja-${context.periodLabel}`,
     sheetName: 'Caja',
     columns: [
       stringColumn('Sesión'),
@@ -335,7 +339,7 @@ async function buildClientsExport(context: ExportContext): Promise<ExportDefinit
 }
 
 async function buildAuditExport(context: ExportContext): Promise<ExportDefinition> {
-  const range = getLocalMonthUtcRange(context.period, context.timeZone)
+  const range = context.range ?? getLocalMonthUtcRange(context.period, context.timeZone)
   const rows = await db
     .select({
       id: auditLogs.id,
@@ -357,7 +361,7 @@ async function buildAuditExport(context: ExportContext): Promise<ExportDefinitio
     .limit(10_000)
 
   return {
-    filename: `auditoria-${context.period}`,
+    filename: `auditoria-${context.periodLabel}`,
     sheetName: 'Auditoria',
     columns: [
       stringColumn('Fecha'),
@@ -379,7 +383,7 @@ async function buildAuditExport(context: ExportContext): Promise<ExportDefinitio
 }
 
 async function buildDomainEventsExport(context: ExportContext): Promise<ExportDefinition> {
-  const range = getLocalMonthUtcRange(context.period, context.timeZone)
+  const range = context.range ?? getLocalMonthUtcRange(context.period, context.timeZone)
   const rows = await db
     .select()
     .from(domainEvents)
@@ -392,7 +396,7 @@ async function buildDomainEventsExport(context: ExportContext): Promise<ExportDe
     .limit(10_000)
 
   return {
-    filename: `eventos-negocio-${context.period}`,
+    filename: `eventos-negocio-${context.periodLabel}`,
     sheetName: 'Eventos negocio',
     columns: [
       stringColumn('Fecha'),
@@ -408,7 +412,7 @@ async function buildDomainEventsExport(context: ExportContext): Promise<ExportDe
 }
 
 async function buildSystemEventsExport(context: ExportContext): Promise<ExportDefinition> {
-  const range = getLocalMonthUtcRange(context.period, context.timeZone)
+  const range = context.range ?? getLocalMonthUtcRange(context.period, context.timeZone)
   const rows = await db
     .select()
     .from(systemEvents)
@@ -421,7 +425,7 @@ async function buildSystemEventsExport(context: ExportContext): Promise<ExportDe
     .limit(10_000)
 
   return {
-    filename: `eventos-sistema-${context.period}`,
+    filename: `eventos-sistema-${context.periodLabel}`,
     sheetName: 'Eventos sistema',
     columns: [
       stringColumn('Fecha'),
