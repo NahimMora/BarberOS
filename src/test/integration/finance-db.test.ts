@@ -352,6 +352,54 @@ describeDatabase('finance PostgreSQL constraints', () => {
     expect(constraint).toBe('cash_movements_sale_reference')
   })
 
+  it('rejects charging the same appointment twice', async () => {
+    let errorCode: string | undefined
+    try {
+      await sql.begin(async (tx) => {
+        const [branch] = await tx<{ id: string }[]>`
+          insert into branches (organization_id, name)
+          values (${organizationId}, 'Double charge test')
+          returning id
+        `
+        const [appointment] = await tx<{ id: string }[]>`
+          insert into appointments (
+            organization_id, branch_id, barber_id, created_by_user_id,
+            status, source, start_at, end_at
+          )
+          values (
+            ${organizationId}, ${branch.id}, ${barberId}, ${adminId},
+            'completed', 'walk_in', now(), now() + interval '30 minutes'
+          )
+          returning id
+        `
+        await tx`
+          insert into sales (
+            organization_id, branch_id, appointment_id, barber_id,
+            subtotal, discount, total, status, created_by, paid_at
+          )
+          values (
+            ${organizationId}, ${branch.id}, ${appointment.id}, ${barberId},
+            1000.00, 0.00, 1000.00, 'paid', ${adminId}, now()
+          )
+        `
+        await tx`
+          insert into sales (
+            organization_id, branch_id, appointment_id, barber_id,
+            subtotal, discount, total, status, created_by, paid_at
+          )
+          values (
+            ${organizationId}, ${branch.id}, ${appointment.id}, ${barberId},
+            1000.00, 0.00, 1000.00, 'paid', ${adminId}, now()
+          )
+        `
+      })
+    } catch (error) {
+      errorCode = (error as { code?: string }).code
+    }
+
+    expect(errorCode).toBe('23505')
+  })
+
   it('prevents updates to recorded payments', async () => {
     let errorCode: string | undefined
     try {

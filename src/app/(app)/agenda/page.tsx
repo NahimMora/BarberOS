@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { MoneyInput } from '@/components/ui/money-input'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -40,16 +41,23 @@ import {
 } from '@/components/ui/table'
 import { toast } from 'sonner'
 import {
+  Ban,
+  CalendarCheck,
   CalendarClock,
   CalendarSync,
   Check,
+  CheckCheck,
   ChevronLeft,
   ChevronRight,
   CircleDollarSign,
+  Clock,
   Minus,
+  PlayCircle,
   Plus,
+  UserX,
   X,
 } from 'lucide-react'
+import { calculateSaleTotals } from '@/lib/money/money'
 
 type Appointment = {
   id: string
@@ -66,6 +74,8 @@ type Appointment = {
   saleId: string | null
 }
 
+type AppointmentServiceLine = { serviceId: string; priceAtTime: string; durationAtTime: number }
+
 type Client = { id: string; firstName: string | null; lastName: string | null; whatsappRaw: string | null }
 type Service = { id: string; name: string; durationMinutes: number; price: string }
 type Slot = { startAt: string; endAt: string }
@@ -78,6 +88,7 @@ type AgendaContext = {
 }
 
 const ANONYMOUS_CLIENT = '__anonymous__'
+const ALL_BARBERS = '__all__'
 
 const STATUS_LABELS: Record<string, string> = {
   scheduled: 'Agendado',
@@ -90,11 +101,44 @@ const STATUS_LABELS: Record<string, string> = {
 
 const STATUS_VARIANTS: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
   scheduled: 'outline',
-  confirmed: 'default',
+  confirmed: 'secondary',
   in_progress: 'default',
-  completed: 'secondary',
+  completed: 'outline',
   cancelled: 'destructive',
   no_show: 'secondary',
+}
+
+const STATUS_ICONS: Record<string, typeof Clock> = {
+  scheduled: Clock,
+  confirmed: CalendarCheck,
+  in_progress: PlayCircle,
+  completed: CheckCheck,
+  cancelled: Ban,
+  no_show: UserX,
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const Icon = STATUS_ICONS[status] ?? Clock
+  return (
+    <Badge variant={STATUS_VARIANTS[status] ?? 'outline'}>
+      <Icon data-icon="inline-start" className="size-3" />
+      {STATUS_LABELS[status] ?? status}
+    </Badge>
+  )
+}
+
+function BarberTag({ barber }: { barber: Barber | undefined }) {
+  if (!barber) return <span className="text-sm text-muted-foreground">—</span>
+  return (
+    <span className="inline-flex items-center gap-1.5 text-sm">
+      <span
+        className="size-2.5 shrink-0 rounded-full"
+        style={{ backgroundColor: barber.displayColor ?? '#9a8f7a' }}
+        aria-hidden="true"
+      />
+      {barber.fullName}
+    </span>
+  )
 }
 
 function toLocalDateString(date: Date): string {
@@ -106,6 +150,7 @@ export default function AgendaPage() {
   const [date, setDate] = useState(today)
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [loading, setLoading] = useState(false)
+  const [barberFilter, setBarberFilter] = useState(ALL_BARBERS)
 
   // New appointment dialog
   const [newOpen, setNewOpen] = useState(false)
@@ -133,6 +178,8 @@ export default function AgendaPage() {
   const [chargeTarget, setChargeTarget] = useState<Appointment | null>(null)
   const [chargeDiscount, setChargeDiscount] = useState('0.00')
   const [chargeMethod, setChargeMethod] = useState('cash')
+  const [chargeNote, setChargeNote] = useState('')
+  const [chargeServices, setChargeServices] = useState<AppointmentServiceLine[]>([])
   const [charging, setCharging] = useState(false)
 
   const fetchAppointments = useCallback(async () => {
@@ -151,6 +198,40 @@ export default function AgendaPage() {
 
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void fetchAppointments() }, [fetchAppointments])
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const [servicesResponse, contextResponse] = await Promise.all([
+          fetch('/api/services'),
+          fetch('/api/agenda-context'),
+        ])
+        if (servicesResponse.ok) setServices(await servicesResponse.json())
+        if (contextResponse.ok) {
+          const context: AgendaContext = await contextResponse.json()
+          setBranches(context.branches ?? [])
+          setBarbers(context.barbers ?? [])
+          setCurrentUser(context.user)
+        }
+      } catch {
+        // El listado diario igual funciona; esto solo enriquece la columna de barbero y el detalle de cobro.
+      }
+    })()
+  }, [])
+
+  const barberById = useMemo(() => new Map(barbers.map((barber) => [barber.id, barber])), [barbers])
+  const serviceById = useMemo(() => new Map(services.map((service) => [service.id, service])), [services])
+  const barbersInView = useMemo(
+    () => barbers.filter((barber) => appointments.some((appointment) => appointment.barberId === barber.id)),
+    [barbers, appointments],
+  )
+  const visibleAppointments = useMemo(
+    () => (barberFilter === ALL_BARBERS ? appointments : appointments.filter((a) => a.barberId === barberFilter)),
+    [appointments, barberFilter],
+  )
+  const chargeSubtotal = chargeServices.length > 0
+    ? calculateSaleTotals(chargeServices.map((item) => ({ quantity: 1, unitPrice: item.priceAtTime })), '0.00').subtotal
+    : null
 
   function changeDate(delta: number) {
     const d = new Date(date + 'T12:00:00Z')
@@ -181,6 +262,23 @@ export default function AgendaPage() {
     setSelectedSlot('')
   }
 
+  async function openCharge(appointment: Appointment) {
+    setChargeTarget(appointment)
+    setChargeDiscount('0.00')
+    setChargeMethod('cash')
+    setChargeNote('')
+    setChargeServices([])
+    try {
+      const response = await fetch(`/api/appointments/${appointment.id}`)
+      if (response.ok) {
+        const detail = await response.json()
+        setChargeServices(detail.services ?? [])
+      }
+    } catch {
+      // El desglose es una ayuda visual; el cobro igual funciona sin él.
+    }
+  }
+
   async function chargeAppointment() {
     if (!chargeTarget) return
     setCharging(true)
@@ -195,6 +293,7 @@ export default function AgendaPage() {
           appointmentId: chargeTarget.id,
           discount: chargeDiscount || '0.00',
           paymentMethod: chargeMethod,
+          paymentNote: chargeNote.trim() || null,
         }),
       })
       const result = await response.json()
@@ -207,6 +306,8 @@ export default function AgendaPage() {
       setChargeTarget(null)
       setChargeDiscount('0.00')
       setChargeMethod('cash')
+      setChargeNote('')
+      setChargeServices([])
       await fetchAppointments()
     } finally {
       setCharging(false)
@@ -391,6 +492,35 @@ export default function AgendaPage() {
         </CardContent>
       </Card>
 
+      {barbersInView.length > 1 ? (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant={barberFilter === ALL_BARBERS ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setBarberFilter(ALL_BARBERS)}
+          >
+            Todos
+          </Button>
+          {barbersInView.map((barber) => (
+            <Button
+              key={barber.id}
+              type="button"
+              variant={barberFilter === barber.id ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setBarberFilter(barber.id)}
+            >
+              <span
+                className="size-2.5 shrink-0 rounded-full"
+                style={{ backgroundColor: barber.displayColor ?? '#9a8f7a' }}
+                aria-hidden="true"
+              />
+              {barber.fullName}
+            </Button>
+          ))}
+        </div>
+      ) : null}
+
       {loading ? (
         <div className="flex flex-col gap-3" aria-label="Cargando turnos">
           {[0, 1, 2].map((item) => (
@@ -404,20 +534,21 @@ export default function AgendaPage() {
               <TableRow>
                 <TableHead>Hora</TableHead>
                 <TableHead>Cliente</TableHead>
+                <TableHead>Barbero</TableHead>
                 <TableHead>Estado</TableHead>
                 <TableHead>Origen</TableHead>
                 <TableHead className="text-right">Acciones</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {appointments.length === 0 ? (
+              {visibleAppointments.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                     Sin turnos para este día
                   </TableCell>
                 </TableRow>
               ) : (
-                appointments.map((a) => (
+                visibleAppointments.map((a) => (
                   <TableRow key={a.id}>
                     <TableCell className="font-mono text-sm">
                       {new Date(a.startAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' })}
@@ -427,10 +558,9 @@ export default function AgendaPage() {
                     <TableCell>
                       {[a.clientFirstName, a.clientLastName].filter(Boolean).join(' ') || 'Walk-in'}
                     </TableCell>
+                    <TableCell><BarberTag barber={barberById.get(a.barberId)} /></TableCell>
                     <TableCell>
-                      <Badge variant={STATUS_VARIANTS[a.status] ?? 'outline'}>
-                        {STATUS_LABELS[a.status] ?? a.status}
-                      </Badge>
+                      <StatusBadge status={a.status} />
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground capitalize">
                       {a.source === 'walk_in' ? 'Walk-in' : 'Agendado'}
@@ -476,7 +606,7 @@ export default function AgendaPage() {
                             size="icon"
                             title="Cobrar"
                             aria-label="Cobrar turno"
-                            onClick={() => setChargeTarget(a)}
+                            onClick={() => void openCharge(a)}
                           >
                             <CircleDollarSign className="text-primary" />
                           </Button>
@@ -524,7 +654,7 @@ export default function AgendaPage() {
 
       {!loading ? (
         <div className="flex flex-col gap-3 md:hidden">
-          {appointments.length === 0 ? (
+          {visibleAppointments.length === 0 ? (
             <Empty className="border bg-card">
               <EmptyHeader>
                 <EmptyMedia variant="icon"><CalendarClock /></EmptyMedia>
@@ -533,17 +663,18 @@ export default function AgendaPage() {
               </EmptyHeader>
             </Empty>
           ) : (
-            appointments.map((appointment) => (
+            visibleAppointments.map((appointment) => (
               <AppointmentMobileCard
                 key={appointment.id}
                 appointment={appointment}
+                barber={barberById.get(appointment.barberId)}
                 onStatusChange={updateStatus}
                 onReschedule={openReschedule}
                 onCancel={(target) => {
                   setCancelTarget(target)
                   setCancelReason('')
                 }}
-                onCharge={setChargeTarget}
+                onCharge={(target) => void openCharge(target)}
               />
             ))
           )}
@@ -807,16 +938,39 @@ export default function AgendaPage() {
             <DialogTitle>Cobrar turno</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-2">
-            <div className="rounded-xl bg-secondary p-3 text-sm">
-              Se cobrarán los servicios y precios guardados al crear el turno.
-            </div>
+            {chargeServices.length > 0 ? (
+              <div className="flex flex-col gap-1.5 rounded-xl bg-secondary p-3 text-sm">
+                {chargeServices.map((item) => (
+                  <div key={item.serviceId} className="flex items-center justify-between">
+                    <span>{serviceById.get(item.serviceId)?.name ?? 'Servicio'}</span>
+                    <span className="font-mono tabular-nums">${item.priceAtTime}</span>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between border-t border-border/60 pt-1.5 font-medium">
+                  <span>Subtotal</span>
+                  <span className="font-mono tabular-nums">${chargeSubtotal}</span>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-xl bg-secondary p-3 text-sm">
+                Se cobrarán los servicios y precios guardados al crear el turno.
+              </div>
+            )}
             <div className="flex flex-col gap-1">
               <Label htmlFor="chargeDiscount">Descuento</Label>
-              <Input
+              <MoneyInput
                 id="chargeDiscount"
-                inputMode="decimal"
                 value={chargeDiscount}
-                onChange={(event) => setChargeDiscount(event.target.value)}
+                onValueChange={setChargeDiscount}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="chargeNote">Referencia del pago (opcional)</Label>
+              <Input
+                id="chargeNote"
+                value={chargeNote}
+                onChange={(event) => setChargeNote(event.target.value)}
+                placeholder="Ej. comprobante o últimos 4 dígitos"
               />
             </div>
             <div className="flex flex-col gap-1">
@@ -881,12 +1035,14 @@ function AgendaStat({
 
 function AppointmentMobileCard({
   appointment,
+  barber,
   onStatusChange,
   onReschedule,
   onCancel,
   onCharge,
 }: {
   appointment: Appointment
+  barber: Barber | undefined
   onStatusChange: (id: string, status: string, reason?: string) => Promise<void>
   onReschedule: (appointment: Appointment) => Promise<void>
   onCancel: (appointment: Appointment) => void
@@ -915,10 +1071,9 @@ function AppointmentMobileCard({
             <p className="mt-1 font-mono text-sm font-semibold tabular-nums text-muted-foreground">
               {start} - {end}
             </p>
+            <div className="mt-1"><BarberTag barber={barber} /></div>
           </div>
-          <Badge variant={STATUS_VARIANTS[appointment.status] ?? 'outline'}>
-            {STATUS_LABELS[appointment.status] ?? appointment.status}
-          </Badge>
+          <StatusBadge status={appointment.status} />
         </div>
         <div className="flex flex-wrap gap-2 border-t border-border/70 pt-3">
           {appointment.status === 'scheduled' ? (
