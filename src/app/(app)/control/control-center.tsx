@@ -57,19 +57,19 @@ const tabs = [
     value: 'audit' as const,
     label: 'Auditoría',
     icon: ShieldCheck,
-    description: 'Quién hizo cada cambio sensible y qué cambió: turnos completados o cancelados, ventas anuladas, ajustes de caja, comisiones liquidadas. Usalo para investigar un reclamo o una diferencia de plata.',
+    description: 'Quién cambió qué: turnos, ventas anuladas, ajustes de caja.',
   },
   {
     value: 'domain' as const,
     label: 'Negocio',
     icon: Activity,
-    description: 'La secuencia de hechos del negocio a medida que ocurren (turno creado, venta cobrada, caja cerrada). Útil para reconstruir qué pasó en un día puntual, sin el detalle técnico.',
+    description: 'Turnos, ventas y cajas a medida que ocurren.',
   },
   {
     value: 'system' as const,
     label: 'Sistema',
     icon: Braces,
-    description: 'Señales técnicas (errores y advertencias de la aplicación) para diagnóstico. Pensado para soporte, no hace falta revisarlo en la operación diaria.',
+    description: 'Errores y advertencias técnicas, para soporte.',
   },
 ]
 
@@ -141,7 +141,6 @@ export function ControlCenter() {
       <PageHeader
         eyebrow="Control"
         title="Trazabilidad"
-        description="Quién hizo qué, cuándo y en qué módulo — para auditar un cambio sensible o reconstruir un día operativo, no para el uso diario."
       />
 
       <Card>

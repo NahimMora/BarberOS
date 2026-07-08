@@ -61,7 +61,7 @@ const reports: {
   {
     resource: 'clients',
     title: 'Clientes',
-    description: 'Datos de contacto, consentimientos y preferencias vigentes. Siempre exporta el listado completo, sin período.',
+    description: 'Datos de contacto, consentimientos y preferencias vigentes.',
     icon: Users,
     roles: ['admin', 'receptionist'],
     period: 'none',
@@ -70,7 +70,7 @@ const reports: {
   {
     resource: 'commissions',
     title: 'Comisiones',
-    description: 'Base neta, tasa congelada, importe y estado por venta. Solo por mes calendario completo (así se liquida).',
+    description: 'Base neta, tasa, importe y estado por venta.',
     icon: Scissors,
     roles: ['admin'],
     period: 'monthOnly',
@@ -246,15 +246,13 @@ export function ExportCenter({
       <PageHeader
         eyebrow="Datos"
         title="Exportaciones"
-        description="Descargá información operativa con el mismo alcance de sucursales y permisos que usás en BarberOS."
       />
 
       <Card>
         <CardHeader className="border-b">
           <CardTitle className="text-xl">Período</CardTitle>
           <CardDescription>
-            El período usa la zona horaria de la organización. Clientes siempre exporta el listado
-            completo; Comisiones solo admite mes calendario completo.
+            Se aplica la zona horaria de la organización.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
