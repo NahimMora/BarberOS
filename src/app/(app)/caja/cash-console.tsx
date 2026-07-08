@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ArrowDownLeft,
   ArrowUpRight,
-  Banknote,
+  ChevronDown,
+  ChevronUp,
   CircleDollarSign,
   CreditCard,
   Landmark,
@@ -56,6 +57,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
+import { MoneyInput } from '@/components/ui/money-input'
 import { calculateSaleTotals } from '@/lib/money/money'
 import { formatArs } from '@/lib/money/display'
 import { VoidSalePanel } from './void-sale-panel'
@@ -72,21 +74,6 @@ type Client = {
   id: string
   firstName: string | null
   lastName: string | null
-}
-type Appointment = {
-  id: string
-  barberId: string
-  clientId: string | null
-  clientFirstName: string | null
-  clientLastName: string | null
-  startAt: string
-}
-type Sale = {
-  id: string
-  appointmentId: string | null
-  total: string
-  paymentMethod: PaymentMethod
-  paidAt: string
 }
 type CashSession = {
   id: string
@@ -123,7 +110,6 @@ type CashResponse = {
 type PaymentMethod = 'cash' | 'transfer' | 'card' | 'mercadopago_manual' | 'other'
 type SelectedItem = { serviceId: string; quantity: number }
 
-const MANUAL_SALE = 'manual'
 const ANONYMOUS_CLIENT = 'anonymous'
 const paymentLabels: Record<PaymentMethod, string> = {
   cash: 'Efectivo',
@@ -155,12 +141,10 @@ export function CashConsole() {
   const [clients, setClients] = useState<Client[]>([])
   const [branchId, setBranchId] = useState('')
   const [cash, setCash] = useState<CashResponse | null>(null)
-  const [appointments, setAppointments] = useState<Appointment[]>([])
-  const [sales, setSales] = useState<Sale[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [openingAmount, setOpeningAmount] = useState('0.00')
-  const [appointmentId, setAppointmentId] = useState(MANUAL_SALE)
+  const [quickSaleOpen, setQuickSaleOpen] = useState(false)
   const [barberId, setBarberId] = useState('')
   const [clientId, setClientId] = useState(ANONYMOUS_CLIENT)
   const [selectedServiceId, setSelectedServiceId] = useState('')
@@ -217,22 +201,11 @@ export function CashConsole() {
     if (!branchId) return
     if (showSpinner) setRefreshing(true)
     try {
-      const [cashResponse, appointmentsResponse, salesResponse] = await Promise.all([
-        fetch(`/api/cash-sessions?branch_id=${branchId}`),
-        fetch(`/api/appointments?branch_id=${branchId}&status=completed`),
-        fetch(`/api/sales?branch_id=${branchId}`),
-      ])
-      if (!cashResponse.ok || !appointmentsResponse.ok || !salesResponse.ok) {
+      const cashResponse = await fetch(`/api/cash-sessions?branch_id=${branchId}`)
+      if (!cashResponse.ok) {
         throw new Error('No se pudo actualizar la operación de caja')
       }
-      const [cashData, appointmentData, salesData] = await Promise.all([
-        cashResponse.json(),
-        appointmentsResponse.json(),
-        salesResponse.json(),
-      ])
-      setCash(cashData)
-      setAppointments(appointmentData)
-      setSales(salesData)
+      setCash(await cashResponse.json())
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Error al actualizar caja')
     } finally {
@@ -250,17 +223,8 @@ export function CashConsole() {
     () => context?.barbers.filter((barber) => barber.branchId === branchId) ?? [],
     [branchId, context],
   )
-  const paidAppointmentIds = useMemo(
-    () => new Set(sales.map((sale) => sale.appointmentId).filter(Boolean)),
-    [sales],
-  )
-  const chargeableAppointments = useMemo(
-    () => appointments.filter((appointment) => !paidAppointmentIds.has(appointment.id)),
-    [appointments, paidAppointmentIds],
-  )
-  const selectedAppointment = chargeableAppointments.find((appointment) => appointment.id === appointmentId)
   const saleTotals = useMemo(() => {
-    if (appointmentId !== MANUAL_SALE || items.length === 0) return null
+    if (items.length === 0) return null
     try {
       return calculateSaleTotals(items.map((item) => ({
         quantity: item.quantity,
@@ -269,17 +233,7 @@ export function CashConsole() {
     } catch {
       return null
     }
-  }, [appointmentId, discount, items, services])
-
-  function changeAppointment(value: string | null) {
-    const next = value ?? MANUAL_SALE
-    setAppointmentId(next)
-    if (next === MANUAL_SALE) return
-    const appointment = chargeableAppointments.find((candidate) => candidate.id === next)
-    if (!appointment) return
-    setBarberId(appointment.barberId)
-    setClientId(appointment.clientId ?? ANONYMOUS_CLIENT)
-  }
+  }, [discount, items, services])
 
   function addService() {
     if (!selectedServiceId) return
@@ -316,7 +270,7 @@ export function CashConsole() {
       toast.error('Seleccioná un barbero')
       return
     }
-    if (appointmentId === MANUAL_SALE && items.length === 0) {
+    if (items.length === 0) {
       toast.error('Agregá al menos un servicio')
       return
     }
@@ -330,8 +284,7 @@ export function CashConsole() {
           branchId,
           barberId,
           clientId: clientId === ANONYMOUS_CLIENT ? null : clientId,
-          appointmentId: appointmentId === MANUAL_SALE ? null : appointmentId,
-          items: appointmentId === MANUAL_SALE ? items : undefined,
+          items,
           discount: discount || '0.00',
           paymentMethod,
           paymentNote: paymentNote || null,
@@ -342,14 +295,14 @@ export function CashConsole() {
         return
       }
       const result = await response.json()
-      toast.success(`Cobro registrado por ${formatArs(result.sale.total)}`)
+      toast.success(`Venta rápida registrada por ${formatArs(result.sale.total)}`)
       if (result.warning) toast.warning(result.warning)
-      setAppointmentId(MANUAL_SALE)
       setBarberId('')
       setClientId(ANONYMOUS_CLIENT)
       setItems([])
       setDiscount('0.00')
       setPaymentNote('')
+      setQuickSaleOpen(false)
       await refreshBranch(false)
     } finally {
       setSavingSale(false)
@@ -525,10 +478,9 @@ export function CashConsole() {
           <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end">
             <Field className="sm:max-w-xs">
               <FieldLabel className="text-primary-foreground">Efectivo inicial</FieldLabel>
-              <Input
-                inputMode="decimal"
+              <MoneyInput
                 value={openingAmount}
-                onChange={(event) => setOpeningAmount(event.target.value)}
+                onValueChange={setOpeningAmount}
                 className="h-11 bg-primary-foreground text-foreground"
               />
             </Field>
@@ -545,96 +497,138 @@ export function CashConsole() {
         </Card>
       ) : (
         <>
-          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-            <MoneyStat icon={Banknote} label="Efectivo esperado" value={cash.liveSnapshot?.expectedCash} accent />
-            <MoneyStat icon={Landmark} label="Transferencias" value={cash.liveSnapshot?.expectedTransfer} />
-            <MoneyStat icon={CreditCard} label="Tarjetas" value={cash.liveSnapshot?.expectedCard} />
-            <MoneyStat icon={Smartphone} label="Mercado Pago" value={cash.liveSnapshot?.expectedMercadopagoManual} />
-            <MoneyStat icon={WalletCards} label="Total operativo" value={cash.liveSnapshot?.expectedTotal} />
-          </section>
-
           <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
-            <Card elevated>
-              <CardHeader>
-                <Badge variant="secondary" className="w-fit">Cobro manual</Badge>
-                <CardTitle className="text-2xl">Registrar venta</CardTitle>
-                <CardDescription>
-                  Cobrá un turno completado o armá una venta rápida para un walk-in.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <FieldGroup>
-                  <Field>
-                    <FieldLabel>Origen</FieldLabel>
-                    <Select
-                      items={[
-                        { value: MANUAL_SALE, label: 'Venta rápida / walk-in' },
-                        ...chargeableAppointments.map((appointment) => ({
-                          value: appointment.id,
-                          label: `${new Date(appointment.startAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })} · ${[appointment.clientFirstName, appointment.clientLastName].filter(Boolean).join(' ') || 'Walk-in'}`,
-                        })),
-                      ]}
-                      value={appointmentId}
-                      onValueChange={changeAppointment}
-                    >
-                      <SelectTrigger className="h-11 w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          <SelectItem value={MANUAL_SALE}>Venta rápida / walk-in</SelectItem>
-                          {chargeableAppointments.map((appointment) => (
-                            <SelectItem key={appointment.id} value={appointment.id}>
-                              {new Date(appointment.startAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
-                              {' · '}
-                              {[appointment.clientFirstName, appointment.clientLastName].filter(Boolean).join(' ') || 'Walk-in'}
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                  </Field>
-
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <Field>
-                      <FieldLabel>Barbero</FieldLabel>
-                      <Select
-                        items={branchBarbers.map((barber) => ({ value: barber.id, label: barber.fullName }))}
-                        value={barberId}
-                        disabled={appointmentId !== MANUAL_SALE}
-                        onValueChange={(value) => setBarberId(value ?? '')}
-                      >
-                        <SelectTrigger className="h-11 w-full"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
-                        <SelectContent><SelectGroup>
-                          {branchBarbers.map((barber) => (
-                            <SelectItem key={barber.id} value={barber.id}>{barber.fullName}</SelectItem>
-                          ))}
-                        </SelectGroup></SelectContent>
-                      </Select>
-                    </Field>
-                    <Field>
-                      <FieldLabel>Cliente</FieldLabel>
-                      <Select
-                        items={[
-                          { value: ANONYMOUS_CLIENT, label: 'Walk-in anónimo' },
-                          ...clients.map((client) => ({ value: client.id, label: fullName(client) })),
-                        ]}
-                        value={clientId}
-                        disabled={appointmentId !== MANUAL_SALE}
-                        onValueChange={(value) => setClientId(value ?? ANONYMOUS_CLIENT)}
-                      >
-                        <SelectTrigger className="h-11 w-full"><SelectValue /></SelectTrigger>
-                        <SelectContent><SelectGroup>
-                          <SelectItem value={ANONYMOUS_CLIENT}>Walk-in anónimo</SelectItem>
-                          {clients.map((client) => (
-                            <SelectItem key={client.id} value={client.id}>{fullName(client)}</SelectItem>
-                          ))}
-                        </SelectGroup></SelectContent>
-                      </Select>
-                    </Field>
+            <div className="flex flex-col gap-5">
+              <Card elevated>
+                <CardHeader>
+                  <CardTitle className="text-2xl">Control de efectivo</CardTitle>
+                  <CardDescription>
+                    Esperado en billetes: solo este importe se compara con el conteo físico al cerrar.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-4">
+                  <div className="rounded-2xl bg-secondary p-5">
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
+                      Esperado en billetes
+                    </p>
+                    <p className="mt-2 font-mono text-4xl font-semibold tabular-nums">
+                      {formatArs(cash.liveSnapshot?.expectedCash)}
+                    </p>
                   </div>
+                  <section className="grid grid-cols-2 gap-3 md:grid-cols-3">
+                    <MoneyStat icon={Landmark} label="Transferencias" value={cash.liveSnapshot?.expectedTransfer} />
+                    <MoneyStat icon={CreditCard} label="Tarjetas" value={cash.liveSnapshot?.expectedCard} />
+                    <MoneyStat icon={Smartphone} label="Mercado Pago" value={cash.liveSnapshot?.expectedMercadopagoManual} />
+                    <MoneyStat icon={WalletCards} label="Total operativo" value={cash.liveSnapshot?.expectedTotal} accent />
+                  </section>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button variant="outline" onClick={() => setMovementOpen(true)}>
+                      <ArrowDownLeft />
+                      Movimiento
+                    </Button>
+                    <Button variant="destructive" onClick={() => setCloseOpen(true)}>
+                      <LockKeyhole />
+                      Cerrar caja
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
 
-                  {appointmentId === MANUAL_SALE ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Últimos movimientos</CardTitle>
+                  <CardDescription>{cash.movements.length} registros en la sesión.</CardDescription>
+                </CardHeader>
+                <CardContent className="px-0">
+                  <div className="max-h-96 overflow-auto">
+                    {cash.movements.length === 0 ? (
+                      <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+                        Todavía no hay movimientos.
+                      </p>
+                    ) : cash.movements.slice(0, 12).map((movement) => {
+                      const negative = movement.type === 'expense' || movement.type === 'withdrawal'
+                      return (
+                        <div key={movement.id} className="flex items-center gap-3 border-t px-4 py-2.5 first:border-t-0">
+                          <div className={`flex size-8 shrink-0 items-center justify-center rounded-xl ${negative ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success'}`}>
+                            {negative ? <ArrowUpRight className="size-4" /> : <ArrowDownLeft className="size-4" />}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-bold">{movement.note || movementLabels[movement.type]}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {paymentLabels[movement.paymentMethod]} · {new Date(movement.createdAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                          </div>
+                          <p className={`shrink-0 font-mono text-sm font-bold tabular-nums ${negative ? 'text-destructive' : ''}`}>
+                            {negative ? '-' : ''}{formatArs(movement.amount)}
+                          </p>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <Card>
+              <CardHeader className="flex-row items-start justify-between gap-3">
+                <div className="flex flex-col gap-1">
+                  <Badge variant="secondary" className="w-fit">Ajuste operativo</Badge>
+                  <CardTitle>Venta rápida (sin turno)</CardTitle>
+                  <CardDescription>
+                    Solo para un walk-in que no pasó por Agenda. Para cobrar un turno agendado,
+                    hacelo desde Agenda al completarlo.
+                  </CardDescription>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setQuickSaleOpen((current) => !current)}
+                >
+                  {quickSaleOpen ? <ChevronUp /> : <ChevronDown />}
+                  {quickSaleOpen ? 'Ocultar' : 'Registrar'}
+                </Button>
+              </CardHeader>
+              {quickSaleOpen ? (
+                <CardContent>
+                  <FieldGroup>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <Field>
+                        <FieldLabel>Barbero</FieldLabel>
+                        <Select
+                          items={branchBarbers.map((barber) => ({ value: barber.id, label: barber.fullName }))}
+                          value={barberId}
+                          onValueChange={(value) => setBarberId(value ?? '')}
+                        >
+                          <SelectTrigger className="h-11 w-full"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+                          <SelectContent><SelectGroup>
+                            {branchBarbers.map((barber) => (
+                              <SelectItem key={barber.id} value={barber.id}>{barber.fullName}</SelectItem>
+                            ))}
+                          </SelectGroup></SelectContent>
+                        </Select>
+                      </Field>
+                      <Field>
+                        <FieldLabel>Cliente</FieldLabel>
+                        <Select
+                          items={[
+                            { value: ANONYMOUS_CLIENT, label: 'Walk-in anónimo' },
+                            ...clients.map((client) => ({ value: client.id, label: fullName(client) })),
+                          ]}
+                          value={clientId}
+                          onValueChange={(value) => setClientId(value ?? ANONYMOUS_CLIENT)}
+                        >
+                          <SelectTrigger className="h-11 w-full"><SelectValue /></SelectTrigger>
+                          <SelectContent><SelectGroup>
+                            <SelectItem value={ANONYMOUS_CLIENT}>Walk-in anónimo</SelectItem>
+                            {clients.map((client) => (
+                              <SelectItem key={client.id} value={client.id}>{fullName(client)}</SelectItem>
+                            ))}
+                          </SelectGroup></SelectContent>
+                        </Select>
+                      </Field>
+                    </div>
+
                     <Field>
                       <FieldLabel>Servicios</FieldLabel>
                       <div className="flex gap-2">
@@ -705,137 +699,61 @@ export function CashConsole() {
                         })}
                       </div>
                     </Field>
-                  ) : (
-                    <div className="rounded-xl border border-info/20 bg-info/8 p-3 text-sm">
-                      Se usarán los servicios y precios congelados al crear el turno de{' '}
-                      <strong>{[selectedAppointment?.clientFirstName, selectedAppointment?.clientLastName].filter(Boolean).join(' ') || 'walk-in'}</strong>.
-                    </div>
-                  )}
 
-                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <Field>
+                        <FieldLabel>Descuento</FieldLabel>
+                        <MoneyInput value={discount} onValueChange={setDiscount} />
+                      </Field>
+                      <Field>
+                        <FieldLabel>Medio de pago</FieldLabel>
+                        <Select
+                          items={Object.entries(paymentLabels).map(([value, label]) => ({ value, label }))}
+                          value={paymentMethod}
+                          onValueChange={(value) => setPaymentMethod((value ?? 'cash') as PaymentMethod)}
+                        >
+                          <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                          <SelectContent><SelectGroup>
+                            {Object.entries(paymentLabels).map(([value, label]) => (
+                              <SelectItem key={value} value={value}>{label}</SelectItem>
+                            ))}
+                          </SelectGroup></SelectContent>
+                        </Select>
+                      </Field>
+                    </div>
                     <Field>
-                      <FieldLabel>Descuento</FieldLabel>
+                      <FieldLabel>Referencia del pago (opcional)</FieldLabel>
                       <Input
-                        inputMode="decimal"
-                        value={discount}
-                        onChange={(event) => setDiscount(event.target.value)}
+                        value={paymentNote}
+                        onChange={(event) => setPaymentNote(event.target.value)}
+                        placeholder="Ej. comprobante o últimos 4 dígitos"
                       />
                     </Field>
-                    <Field>
-                      <FieldLabel>Medio de pago</FieldLabel>
-                      <Select
-                        items={Object.entries(paymentLabels).map(([value, label]) => ({ value, label }))}
-                        value={paymentMethod}
-                        onValueChange={(value) => setPaymentMethod((value ?? 'cash') as PaymentMethod)}
+
+                    <div className="flex flex-col gap-3 rounded-2xl bg-primary p-4 text-primary-foreground sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-primary-foreground/60">
+                          Total a cobrar
+                        </p>
+                        <p className="mt-1 font-mono text-3xl font-semibold tabular-nums">
+                          {formatArs(saleTotals?.total)}
+                        </p>
+                      </div>
+                      <Button
+                        size="lg"
+                        variant="secondary"
+                        className="min-h-11"
+                        disabled={savingSale}
+                        onClick={() => void chargeSale()}
                       >
-                        <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                        <SelectContent><SelectGroup>
-                          {Object.entries(paymentLabels).map(([value, label]) => (
-                            <SelectItem key={value} value={value}>{label}</SelectItem>
-                          ))}
-                        </SelectGroup></SelectContent>
-                      </Select>
-                    </Field>
-                  </div>
-                  <Field>
-                    <FieldLabel>Referencia del pago (opcional)</FieldLabel>
-                    <Input
-                      value={paymentNote}
-                      onChange={(event) => setPaymentNote(event.target.value)}
-                      placeholder="Ej. comprobante o últimos 4 dígitos"
-                    />
-                  </Field>
-
-                  <div className="flex flex-col gap-3 rounded-2xl bg-primary p-4 text-primary-foreground sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.16em] text-primary-foreground/60">
-                        Total a cobrar
-                      </p>
-                      <p className="mt-1 font-mono text-3xl font-semibold tabular-nums">
-                        {appointmentId === MANUAL_SALE
-                          ? formatArs(saleTotals?.total)
-                          : 'Precio del turno'}
-                      </p>
+                        <CircleDollarSign />
+                        {savingSale ? 'Registrando...' : 'Confirmar cobro'}
+                      </Button>
                     </div>
-                    <Button
-                      size="lg"
-                      variant="secondary"
-                      className="min-h-11"
-                      disabled={savingSale}
-                      onClick={() => void chargeSale()}
-                    >
-                      <CircleDollarSign />
-                      {savingSale ? 'Registrando...' : 'Confirmar cobro'}
-                    </Button>
-                  </div>
-                </FieldGroup>
-              </CardContent>
+                  </FieldGroup>
+                </CardContent>
+              ) : null}
             </Card>
-
-            <div className="flex flex-col gap-5">
-              <Card elevated>
-                <CardHeader>
-                  <CardTitle>Control de efectivo</CardTitle>
-                  <CardDescription>
-                    Solo este importe se compara con el conteo físico al cerrar.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="flex flex-col gap-4">
-                  <div className="rounded-2xl bg-secondary p-5">
-                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                      Esperado en billetes
-                    </p>
-                    <p className="mt-2 font-mono text-4xl font-semibold tabular-nums">
-                      {formatArs(cash.liveSnapshot?.expectedCash)}
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button variant="outline" onClick={() => setMovementOpen(true)}>
-                      <ArrowDownLeft />
-                      Movimiento
-                    </Button>
-                    <Button variant="destructive" onClick={() => setCloseOpen(true)}>
-                      <LockKeyhole />
-                      Cerrar caja
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Últimos movimientos</CardTitle>
-                  <CardDescription>{cash.movements.length} registros en la sesión.</CardDescription>
-                </CardHeader>
-                <CardContent className="px-0">
-                  <div className="max-h-96 overflow-auto">
-                    {cash.movements.length === 0 ? (
-                      <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-                        Todavía no hay movimientos.
-                      </p>
-                    ) : cash.movements.slice(0, 12).map((movement) => {
-                      const negative = movement.type === 'expense' || movement.type === 'withdrawal'
-                      return (
-                        <div key={movement.id} className="flex items-center gap-3 border-t px-4 py-3 first:border-t-0">
-                          <div className={`flex size-9 items-center justify-center rounded-xl ${negative ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success'}`}>
-                            {negative ? <ArrowUpRight className="size-4" /> : <ArrowDownLeft className="size-4" />}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-bold">{movement.note || movementLabels[movement.type]}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {paymentLabels[movement.paymentMethod]} · {new Date(movement.createdAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
-                            </p>
-                          </div>
-                          <p className={`font-mono text-sm font-bold tabular-nums ${negative ? 'text-destructive' : ''}`}>
-                            {negative ? '-' : ''}{formatArs(movement.amount)}
-                          </p>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
           </div>
         </>
       )}
@@ -920,7 +838,7 @@ export function CashConsole() {
             <div className="grid gap-4 sm:grid-cols-2">
               <Field>
                 <FieldLabel>Importe</FieldLabel>
-                <Input inputMode="decimal" value={movementAmount} onChange={(event) => setMovementAmount(event.target.value)} />
+                <MoneyInput value={movementAmount} onValueChange={setMovementAmount} />
               </Field>
               <Field>
                 <FieldLabel>Medio</FieldLabel>
@@ -972,12 +890,11 @@ export function CashConsole() {
           </div>
           <Field>
             <FieldLabel>Efectivo contado</FieldLabel>
-            <Input
+            <MoneyInput
               autoFocus
-              inputMode="decimal"
               value={countedCash}
-              onChange={(event) => setCountedCash(event.target.value)}
-              placeholder="0.00"
+              onValueChange={setCountedCash}
+              placeholder="0,00"
             />
           </Field>
           <DialogFooter>
@@ -1004,11 +921,11 @@ export function CashConsole() {
           <FieldGroup>
             <Field>
               <FieldLabel>Importe firmado</FieldLabel>
-              <Input
-                inputMode="decimal"
+              <MoneyInput
+                allowNegative
                 value={adjustmentAmount}
-                onChange={(event) => setAdjustmentAmount(event.target.value)}
-                placeholder="-500.00 o 500.00"
+                onValueChange={setAdjustmentAmount}
+                placeholder="-500,00 o 500,00"
               />
             </Field>
             <Field>
