@@ -6,6 +6,7 @@ import { barberSchedules, users } from '@/db/schema'
 import { getSession } from '@/lib/auth/get-session'
 import { requireRole } from '@/lib/auth/require-role'
 import { barberBelongsToBranch } from '@/lib/auth/organization-scope'
+import { rangesOverlap } from '@/lib/staff/schedule-summary'
 
 const scheduleSchema = z.object({
   barberId: z.string().uuid(),
@@ -73,8 +74,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Barbero o sucursal inválidos' }, { status: 400 })
   }
 
-  const [existing] = await db
-    .select({ id: barberSchedules.id })
+  const sameDayRows = await db
+    .select({ startTime: barberSchedules.startTime, endTime: barberSchedules.endTime })
     .from(barberSchedules)
     .where(
       and(
@@ -82,12 +83,18 @@ export async function POST(request: Request) {
         eq(barberSchedules.barberId, parsed.data.barberId),
         eq(barberSchedules.branchId, parsed.data.branchId),
         eq(barberSchedules.weekday, parsed.data.weekday),
-        eq(barberSchedules.startTime, parsed.data.startTime),
+        eq(barberSchedules.active, true),
       ),
     )
-    .limit(1)
-  if (existing) {
-    return NextResponse.json({ error: 'Ya existe ese bloque de horario' }, { status: 409 })
+
+  const overlaps = sameDayRows.some((row) =>
+    rangesOverlap(
+      { startTime: row.startTime.slice(0, 5), endTime: row.endTime.slice(0, 5) },
+      parsed.data,
+    ),
+  )
+  if (overlaps) {
+    return NextResponse.json({ error: 'Se superpone con un horario ya cargado' }, { status: 409 })
   }
 
   const [schedule] = await db

@@ -4,12 +4,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import {
   CalendarClock,
+  Copy,
   FileUp,
   MapPin,
   Plus,
   Scissors,
   ShieldCheck,
   UserRoundCog,
+  X,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -51,6 +53,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { Skeleton } from '@/components/ui/skeleton'
+import { summarizeSchedule } from '@/lib/staff/schedule-summary'
 
 type Branch = {
   id: string
@@ -123,6 +126,8 @@ type BarberProfile = {
 }
 
 const DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
+const DAY_SHORT = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
+const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0]
 
 type DayKey = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'
 type DayHours = { open: string; close: string } | null
@@ -154,14 +159,33 @@ const ROLE_LABELS = {
   barber: 'Barbero',
 }
 
-const initialStaffForm = {
+const ROLE_FILTERS: { value: 'all' | Staff['role']; label: string }[] = [
+  { value: 'all', label: 'Todos' },
+  { value: 'barber', label: 'Barberos' },
+  { value: 'receptionist', label: 'Recepción' },
+  { value: 'admin', label: 'Admins' },
+]
+
+const initialProfileForm = {
   fullName: '',
   email: '',
   password: '',
   role: 'receptionist' as Staff['role'],
   branchIds: [] as string[],
   commissionRate: '25.00',
+  address: '',
+  phone: '',
+  emergencyContactName: '',
+  emergencyContactPhone: '',
+  hireDate: '',
+  relationshipType: '',
+  medicalCertExpiry: '',
+  documentationExpiry: '',
+  internalNotes: '',
+  displayColor: '#1f2937',
 }
+
+type ProfileForm = typeof initialProfileForm
 
 export function OperationConsole() {
   const [branches, setBranches] = useState<Branch[]>([])
@@ -172,30 +196,24 @@ export function OperationConsole() {
   const [loading, setLoading] = useState(true)
   const [hasLoaded, setHasLoaded] = useState(false)
   const [activeTab, setActiveTab] = useState('branches')
+  const [staffRoleFilter, setStaffRoleFilter] = useState<'all' | Staff['role']>('all')
 
   const [branchOpen, setBranchOpen] = useState(false)
   const [staffOpen, setStaffOpen] = useState(false)
   const [serviceOpen, setServiceOpen] = useState(false)
-  const [profileOpen, setProfileOpen] = useState(false)
-  const [profile, setProfile] = useState<BarberProfile | null>(null)
   const [profileFile, setProfileFile] = useState<File | null>(null)
+  const [profileDocuments, setProfileDocuments] = useState<BarberProfile['documents']>([])
   const [editingBranchId, setEditingBranchId] = useState<string | null>(null)
   const [editingStaffId, setEditingStaffId] = useState<string | null>(null)
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null)
+  const [disableTarget, setDisableTarget] = useState<Staff | null>(null)
 
   const [branchForm, setBranchForm] = useState(initialBranchForm)
-  const [staffForm, setStaffForm] = useState(initialStaffForm)
+  const [profileForm, setProfileForm] = useState<ProfileForm>(initialProfileForm)
   const [serviceForm, setServiceForm] = useState({
     name: '',
     durationMinutes: '30',
     price: '',
-  })
-  const [scheduleForm, setScheduleForm] = useState({
-    barberId: '',
-    branchId: '',
-    weekday: '1',
-    startTime: '09:00',
-    endTime: '18:00',
   })
   const [timeOffForm, setTimeOffForm] = useState({
     barberId: '',
@@ -205,9 +223,66 @@ export function OperationConsole() {
     reason: '',
   })
 
+  const [availabilityBarberId, setAvailabilityBarberId] = useState('')
+  const [availabilityBranchId, setAvailabilityBranchId] = useState('')
+  const [addRangeDay, setAddRangeDay] = useState<number | null>(null)
+  const [addRangeTimes, setAddRangeTimes] = useState({ startTime: '09:00', endTime: '18:00' })
+  const [copySource, setCopySource] = useState<{ weekday: number; startTime: string; endTime: string } | null>(null)
+  const [copyTargetDays, setCopyTargetDays] = useState<number[]>([])
+
   const barbers = useMemo(
     () => staff.filter((member) => member.role === 'barber' && member.status === 'active'),
     [staff],
+  )
+
+  const visibleStaff = useMemo(
+    () => (staffRoleFilter === 'all' ? staff : staff.filter((member) => member.role === staffRoleFilter)),
+    [staff, staffRoleFilter],
+  )
+
+  const selectedBarberId = availabilityBarberId || barbers[0]?.id || ''
+  const selectedBranchId =
+    availabilityBranchId || branches.find((branch) => branch.active)?.id || branches[0]?.id || ''
+
+  const availabilitySchedules = useMemo(
+    () =>
+      schedules.filter(
+        (schedule) =>
+          schedule.active &&
+          schedule.barberId === selectedBarberId &&
+          schedule.branchId === selectedBranchId,
+      ),
+    [schedules, selectedBarberId, selectedBranchId],
+  )
+
+  const schedulesByWeekday = useMemo(() => {
+    const map = new Map<number, Schedule[]>()
+    for (const schedule of availabilitySchedules) {
+      const list = map.get(schedule.weekday) ?? []
+      list.push(schedule)
+      map.set(schedule.weekday, list)
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => a.startTime.localeCompare(b.startTime))
+    }
+    return map
+  }, [availabilitySchedules])
+
+  const scheduleSummary = useMemo(
+    () =>
+      summarizeSchedule(
+        availabilitySchedules.map((schedule) => ({
+          weekday: schedule.weekday,
+          startTime: schedule.startTime.slice(0, 5),
+          endTime: schedule.endTime.slice(0, 5),
+        })),
+      ),
+    [availabilitySchedules],
+  )
+
+  const visibleTimeOff = useMemo(
+    () => timeOff.filter((row) => row.barberId === selectedBarberId),
+    [timeOff, selectedBarberId],
   )
 
   const loadData = useCallback(async () => {
@@ -243,13 +318,18 @@ export function OperationConsole() {
     return () => window.clearTimeout(timer)
   }, [loadData])
 
-  async function mutate(url: string, options: RequestInit, successMessage: string) {
+  async function request(url: string, options: RequestInit) {
     const response = await fetch(url, options)
     const body = await response.json()
     if (!response.ok) {
       const message = typeof body.error === 'string' ? body.error : 'No se pudo completar la acción'
       throw new Error(message)
     }
+    return body
+  }
+
+  async function mutate(url: string, options: RequestInit, successMessage: string) {
+    const body = await request(url, options)
     toast.success(successMessage)
     await loadData()
     return body
@@ -276,24 +356,112 @@ export function OperationConsole() {
     }
   }
 
-  async function saveStaff() {
+  async function openStaffDialog(member?: Staff) {
+    setProfileFile(null)
+    setProfileDocuments([])
+    if (!member) {
+      setEditingStaffId(null)
+      setProfileForm(initialProfileForm)
+      setStaffOpen(true)
+      return
+    }
+
+    setEditingStaffId(member.id)
+    setProfileForm({
+      ...initialProfileForm,
+      fullName: member.fullName,
+      email: member.email,
+      role: member.role,
+      branchIds: member.branches.map((branch) => branch.id),
+      commissionRate: member.commissionRate ?? '25.00',
+    })
+    setStaffOpen(true)
+
+    if (member.role === 'barber') {
+      const response = await fetch(`/api/barber-profiles/${member.id}`)
+      if (!response.ok) {
+        toast.error('No se pudo cargar el legajo')
+        return
+      }
+      const data: BarberProfile = await response.json()
+      setProfileForm((current) => ({
+        ...current,
+        address: data.address ?? '',
+        phone: data.phone ?? '',
+        emergencyContactName: data.emergencyContactName ?? '',
+        emergencyContactPhone: data.emergencyContactPhone ?? '',
+        hireDate: data.hireDate ?? '',
+        relationshipType: data.relationshipType ?? '',
+        medicalCertExpiry: data.medicalCertExpiry ?? '',
+        documentationExpiry: data.documentationExpiry ?? '',
+        internalNotes: data.internalNotes ?? '',
+        displayColor: data.displayColor ?? '#1f2937',
+      }))
+      setProfileDocuments(data.documents)
+    }
+  }
+
+  async function saveStaffProfile() {
     try {
-      const body = editingStaffId
+      const staffBody = editingStaffId
         ? {
-            fullName: staffForm.fullName,
-            role: staffForm.role,
-            branchIds: staffForm.role === 'admin' ? [] : staffForm.branchIds,
-            commissionRate: staffForm.role === 'barber' ? staffForm.commissionRate : null,
+            fullName: profileForm.fullName,
+            role: profileForm.role,
+            branchIds: profileForm.role === 'admin' ? [] : profileForm.branchIds,
+            commissionRate: profileForm.role === 'barber' ? profileForm.commissionRate : null,
           }
-        : staffForm
-      await mutate(editingStaffId ? `/api/staff/${editingStaffId}` : '/api/staff', {
+        : {
+            fullName: profileForm.fullName,
+            email: profileForm.email,
+            password: profileForm.password,
+            role: profileForm.role,
+            branchIds: profileForm.role === 'admin' ? [] : profileForm.branchIds,
+            commissionRate: profileForm.role === 'barber' ? profileForm.commissionRate : null,
+          }
+
+      const staffResult = await request(editingStaffId ? `/api/staff/${editingStaffId}` : '/api/staff', {
         method: editingStaffId ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      }, editingStaffId ? 'Usuario actualizado' : 'Usuario creado')
+        body: JSON.stringify(staffBody),
+      })
+      const staffId = editingStaffId ?? staffResult.id
+
+      if (profileForm.role === 'barber') {
+        await request(`/api/barber-profiles/${staffId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            address: profileForm.address || null,
+            phone: profileForm.phone || null,
+            emergencyContactName: profileForm.emergencyContactName || null,
+            emergencyContactPhone: profileForm.emergencyContactPhone || null,
+            hireDate: profileForm.hireDate || null,
+            relationshipType: profileForm.relationshipType || null,
+            medicalCertExpiry: profileForm.medicalCertExpiry || null,
+            documentationExpiry: profileForm.documentationExpiry || null,
+            internalNotes: profileForm.internalNotes || null,
+            displayColor: profileForm.displayColor || null,
+          }),
+        })
+
+        if (profileFile) {
+          const formData = new FormData()
+          formData.set('file', profileFile)
+          formData.set('entityType', 'barber_profile')
+          formData.set('entityId', staffId)
+          formData.set('fileCategory', 'barber_document')
+          formData.set('visibility', 'admin_only')
+          await request('/api/files', { method: 'POST', body: formData })
+        }
+      }
+
+      toast.success(editingStaffId ? 'Persona actualizada' : 'Persona creada')
+      await loadData()
       setStaffOpen(false)
       setEditingStaffId(null)
-      setStaffForm(initialStaffForm)
+      setProfileForm(initialProfileForm)
+      setProfileFile(null)
+      setProfileDocuments([])
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Error')
     }
@@ -311,6 +479,12 @@ export function OperationConsole() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Error')
     }
+  }
+
+  async function confirmDisableStaff() {
+    if (!disableTarget) return
+    await toggleStaff(disableTarget)
+    setDisableTarget(null)
   }
 
   async function saveService() {
@@ -344,20 +518,63 @@ export function OperationConsole() {
     }
   }
 
-  async function createSchedule() {
+  function openAddRange(weekday: number) {
+    setAddRangeDay(weekday)
+    setAddRangeTimes({ startTime: '09:00', endTime: '18:00' })
+  }
+
+  async function submitAddRange() {
+    if (addRangeDay === null) return
     try {
       await mutate('/api/barber-schedules', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...scheduleForm,
-          weekday: Number(scheduleForm.weekday),
+          barberId: selectedBarberId,
+          branchId: selectedBranchId,
+          weekday: addRangeDay,
+          startTime: addRangeTimes.startTime,
+          endTime: addRangeTimes.endTime,
         }),
       }, 'Horario agregado')
-      setScheduleForm((current) => ({ ...current, weekday: '1' }))
+      setAddRangeDay(null)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Error')
     }
+  }
+
+  function openCopyDialog(range: Schedule) {
+    setCopySource({ weekday: range.weekday, startTime: range.startTime.slice(0, 5), endTime: range.endTime.slice(0, 5) })
+    setCopyTargetDays([])
+  }
+
+  async function copyScheduleToDays() {
+    if (!copySource) return
+    let succeeded = 0
+    const failedDays: string[] = []
+    for (const weekday of copyTargetDays) {
+      try {
+        await request('/api/barber-schedules', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            barberId: selectedBarberId,
+            branchId: selectedBranchId,
+            weekday,
+            startTime: copySource.startTime,
+            endTime: copySource.endTime,
+          }),
+        })
+        succeeded += 1
+      } catch {
+        failedDays.push(DAY_SHORT[weekday])
+      }
+    }
+    await loadData()
+    if (succeeded > 0) toast.success(`Horario copiado a ${succeeded} día${succeeded === 1 ? '' : 's'}`)
+    if (failedDays.length > 0) toast.error(`No se pudo copiar a: ${failedDays.join(', ')}`)
+    setCopySource(null)
+    setCopyTargetDays([])
   }
 
   async function createTimeOff() {
@@ -376,17 +593,6 @@ export function OperationConsole() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Error')
     }
-  }
-
-  async function openProfile(userId: string) {
-    const response = await fetch(`/api/barber-profiles/${userId}`)
-    if (!response.ok) {
-      toast.error('No se pudo cargar el legajo')
-      return
-    }
-    setProfile(await response.json())
-    setProfileFile(null)
-    setProfileOpen(true)
   }
 
   function editBranch(branch: Branch) {
@@ -411,19 +617,6 @@ export function OperationConsole() {
     setBranchOpen(true)
   }
 
-  function editStaff(member: Staff) {
-    setEditingStaffId(member.id)
-    setStaffForm({
-      fullName: member.fullName,
-      email: member.email,
-      password: '',
-      role: member.role,
-      branchIds: member.branches.map((branch) => branch.id),
-      commissionRate: member.commissionRate ?? '25.00',
-    })
-    setStaffOpen(true)
-  }
-
   function editService(service: Service) {
     setEditingServiceId(service.id)
     setServiceForm({
@@ -432,42 +625,6 @@ export function OperationConsole() {
       price: service.price,
     })
     setServiceOpen(true)
-  }
-
-  async function saveProfile() {
-    if (!profile) return
-    try {
-      await mutate(`/api/barber-profiles/${profile.userId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          address: profile.address,
-          phone: profile.phone,
-          emergencyContactName: profile.emergencyContactName,
-          emergencyContactPhone: profile.emergencyContactPhone,
-          hireDate: profile.hireDate,
-          relationshipType: profile.relationshipType,
-          commissionRate: profile.commissionRate,
-          medicalCertExpiry: profile.medicalCertExpiry,
-          documentationExpiry: profile.documentationExpiry,
-          internalNotes: profile.internalNotes,
-          displayColor: profile.displayColor,
-        }),
-      }, 'Legajo actualizado')
-
-      if (profileFile) {
-        const formData = new FormData()
-        formData.set('file', profileFile)
-        formData.set('entityType', 'barber_profile')
-        formData.set('entityId', profile.userId)
-        formData.set('fileCategory', 'barber_document')
-        formData.set('visibility', 'admin_only')
-        await mutate('/api/files', { method: 'POST', body: formData }, 'Documento adjuntado')
-      }
-      setProfileOpen(false)
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Error')
-    }
   }
 
   if (loading && !hasLoaded) {
@@ -485,7 +642,7 @@ export function OperationConsole() {
       <PageHeader
         eyebrow="Configuración del negocio"
         title="Operación"
-        description="Definí la estructura que alimenta la agenda: sucursales, personas, servicios y disponibilidad."
+        description="Definí la estructura que alimenta la agenda, la caja y las comisiones: sucursales, personas, servicios y disponibilidad."
       />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -541,12 +698,25 @@ export function OperationConsole() {
           <ResourceCard
             title="Equipo"
             description="Roles y alcance por sucursal, autorizados también en backend."
-            action={<Button size="sm" onClick={() => { setEditingStaffId(null); setStaffForm(initialStaffForm); setStaffOpen(true) }}><Plus data-icon="inline-start" />Nuevo usuario</Button>}
+            action={<Button size="sm" onClick={() => void openStaffDialog()}><Plus data-icon="inline-start" />Nuevo usuario</Button>}
           >
+            <div className="mb-3 flex flex-wrap gap-2">
+              {ROLE_FILTERS.map((filter) => (
+                <Button
+                  key={filter.value}
+                  type="button"
+                  variant={staffRoleFilter === filter.value ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setStaffRoleFilter(filter.value)}
+                >
+                  {filter.label}
+                </Button>
+              ))}
+            </div>
             <Table>
               <TableHeader><TableRow><TableHead>Persona</TableHead><TableHead>Rol</TableHead><TableHead>Sucursales</TableHead><TableHead>Estado</TableHead><TableHead /></TableRow></TableHeader>
               <TableBody>
-                {staff.map((member) => (
+                {visibleStaff.map((member) => (
                   <TableRow key={member.id}>
                     <TableCell><div className="font-medium">{member.fullName}</div><div className="text-xs text-muted-foreground">{member.email}</div></TableCell>
                     <TableCell>{ROLE_LABELS[member.role]}</TableCell>
@@ -554,9 +724,12 @@ export function OperationConsole() {
                     <TableCell><Badge variant={member.status === 'active' ? 'default' : 'secondary'}>{member.status === 'active' ? 'Activo' : 'Deshabilitado'}</Badge></TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
-                        {member.role === 'barber' ? <Button variant="outline" size="sm" onClick={() => void openProfile(member.id)}>Legajo</Button> : null}
-                        <Button variant="outline" size="sm" onClick={() => editStaff(member)}>Editar</Button>
-                        <Button variant="ghost" size="sm" onClick={() => void toggleStaff(member)}>
+                        <Button variant="outline" size="sm" onClick={() => void openStaffDialog(member)}>Editar</Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => member.status === 'active' ? setDisableTarget(member) : void toggleStaff(member)}
+                        >
                           {member.status === 'active' ? 'Deshabilitar' : 'Habilitar'}
                         </Button>
                       </div>
@@ -594,23 +767,73 @@ export function OperationConsole() {
         <TabsContent value="availability">
           <div className="grid gap-4 xl:grid-cols-2">
             <Card>
-              <CardHeader><CardTitle>Horario recurrente</CardTitle><CardDescription>Bloques semanales disponibles para reservar.</CardDescription></CardHeader>
+              <CardHeader>
+                <CardTitle>Horario recurrente</CardTitle>
+                <CardDescription>Elegí un barbero y armá su semana día por día.</CardDescription>
+              </CardHeader>
               <CardContent className="flex flex-col gap-4">
-                <ScheduleFields
-                  branches={branches}
-                  barbers={barbers}
-                  value={scheduleForm}
-                  onChange={setScheduleForm}
-                />
-                <Button onClick={() => void createSchedule()}>Agregar horario</Button>
-                <div className="flex flex-col gap-2">
-                  {schedules.filter((row) => row.active).map((row) => (
-                    <div key={row.id} className="flex items-center justify-between rounded-lg border p-3">
-                      <div><p className="font-medium">{row.barberName}</p><p className="text-xs text-muted-foreground">{DAY_NAMES[row.weekday]} · {row.startTime.slice(0, 5)} a {row.endTime.slice(0, 5)}</p></div>
-                      <Button variant="ghost" size="sm" onClick={() => void mutate(`/api/barber-schedules/${row.id}`, { method: 'DELETE' }, 'Horario desactivado')}>Quitar</Button>
-                    </div>
-                  ))}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <SelectField
+                    label="Barbero"
+                    value={selectedBarberId}
+                    items={barbers.map((barber) => ({ value: barber.id, label: barber.fullName }))}
+                    onChange={setAvailabilityBarberId}
+                  />
+                  <SelectField
+                    label="Sucursal"
+                    value={selectedBranchId}
+                    items={branches.filter((branch) => branch.active).map((branch) => ({ value: branch.id, label: branch.name }))}
+                    onChange={setAvailabilityBranchId}
+                  />
                 </div>
+
+                {barbers.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No hay barberos activos todavía.</p>
+                ) : (
+                  <>
+                    <p className="text-sm text-muted-foreground">
+                      {scheduleSummary.length > 0
+                        ? `Resumen: ${scheduleSummary.join(' · ')}`
+                        : 'Sin horario cargado para esta combinación de barbero y sucursal.'}
+                    </p>
+
+                    <div className="flex flex-col gap-2">
+                      {WEEK_ORDER.map((weekday) => (
+                        <div key={weekday} className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="w-24 shrink-0 pt-1 text-sm font-medium">{DAY_NAMES[weekday]}</div>
+                          <div className="flex flex-1 flex-wrap items-center gap-2">
+                            {(schedulesByWeekday.get(weekday) ?? []).map((range) => (
+                              <div key={range.id} className="flex items-center gap-1.5 rounded-full border bg-muted/40 py-1 pr-1.5 pl-3 text-xs">
+                                <span className="font-mono tabular-nums">{range.startTime.slice(0, 5)}–{range.endTime.slice(0, 5)}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => openCopyDialog(range)}
+                                  aria-label={`Copiar horario de ${DAY_NAMES[weekday]} a otros días`}
+                                  title="Copiar a otros días"
+                                  className="rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                                >
+                                  <Copy className="size-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void mutate(`/api/barber-schedules/${range.id}`, { method: 'DELETE' }, 'Horario quitado')}
+                                  aria-label={`Quitar horario de ${DAY_NAMES[weekday]}`}
+                                  title="Quitar"
+                                  className="rounded-full p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                                >
+                                  <X className="size-3" />
+                                </button>
+                              </div>
+                            ))}
+                            <Button variant="outline" size="xs" onClick={() => openAddRange(weekday)}>
+                              <Plus data-icon="inline-start" />Agregar rango
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
 
@@ -620,12 +843,16 @@ export function OperationConsole() {
                 <TimeOffFields branches={branches} barbers={barbers} value={timeOffForm} onChange={setTimeOffForm} />
                 <Button onClick={() => void createTimeOff()}>Registrar ausencia</Button>
                 <div className="flex flex-col gap-2">
-                  {timeOff.map((row) => (
-                    <div key={row.id} className="flex items-center justify-between rounded-lg border p-3">
-                      <div><p className="font-medium">{row.barberName}</p><p className="text-xs text-muted-foreground">{new Date(row.startAt).toLocaleString('es-AR')} · {row.reason || 'Sin motivo'}</p></div>
-                      <Button variant="ghost" size="sm" onClick={() => void mutate(`/api/barber-time-off?id=${row.id}`, { method: 'DELETE' }, 'Ausencia eliminada')}>Quitar</Button>
-                    </div>
-                  ))}
+                  {visibleTimeOff.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Sin ausencias registradas para este barbero.</p>
+                  ) : (
+                    visibleTimeOff.map((row) => (
+                      <div key={row.id} className="flex items-center justify-between rounded-lg border p-3">
+                        <div><p className="font-medium">{row.barberName}</p><p className="text-xs text-muted-foreground">{new Date(row.startAt).toLocaleString('es-AR')} · {row.reason || 'Sin motivo'}</p></div>
+                        <Button variant="ghost" size="sm" onClick={() => void mutate(`/api/barber-time-off?id=${row.id}`, { method: 'DELETE' }, 'Ausencia eliminada')}>Quitar</Button>
+                      </div>
+                    ))
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -634,9 +861,74 @@ export function OperationConsole() {
       </Tabs>
 
       <BranchDialog editing={Boolean(editingBranchId)} open={branchOpen} onOpenChange={setBranchOpen} value={branchForm} onChange={setBranchForm} onSave={() => void saveBranch()} />
-      <StaffDialog editing={Boolean(editingStaffId)} open={staffOpen} onOpenChange={setStaffOpen} branches={branches} value={staffForm} onChange={setStaffForm} onSave={() => void saveStaff()} />
+      <StaffProfileDialog
+        editing={Boolean(editingStaffId)}
+        open={staffOpen}
+        onOpenChange={setStaffOpen}
+        branches={branches}
+        value={profileForm}
+        onChange={setProfileForm}
+        documents={profileDocuments}
+        onFileChange={setProfileFile}
+        onSave={() => void saveStaffProfile()}
+      />
       <ServiceDialog editing={Boolean(editingServiceId)} open={serviceOpen} onOpenChange={setServiceOpen} value={serviceForm} onChange={setServiceForm} onSave={() => void saveService()} />
-      <ProfileDialog open={profileOpen} onOpenChange={setProfileOpen} profile={profile} onChange={setProfile} onFileChange={setProfileFile} onSave={() => void saveProfile()} />
+
+      <Dialog open={addRangeDay !== null} onOpenChange={(open) => !open && setAddRangeDay(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Agregar rango · {addRangeDay !== null ? DAY_NAMES[addRangeDay] : ''}</DialogTitle></DialogHeader>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Desde"><Input type="time" value={addRangeTimes.startTime} onChange={(event) => setAddRangeTimes({ ...addRangeTimes, startTime: event.target.value })} /></Field>
+            <Field label="Hasta"><Input type="time" value={addRangeTimes.endTime} onChange={(event) => setAddRangeTimes({ ...addRangeTimes, endTime: event.target.value })} /></Field>
+          </div>
+          <DialogFooter><Button variant="outline" onClick={() => setAddRangeDay(null)}>Cancelar</Button><Button onClick={() => void submitAddRange()}>Agregar</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={copySource !== null} onOpenChange={(open) => !open && setCopySource(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Copiar {copySource ? `${copySource.startTime}–${copySource.endTime}` : ''} a otros días
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-2">
+            {copySource && WEEK_ORDER.filter((weekday) => weekday !== copySource.weekday).map((weekday) => {
+              const checked = copyTargetDays.includes(weekday)
+              return (
+                <label key={weekday} className="flex items-center gap-2 rounded-lg border p-2.5 text-sm">
+                  <Checkbox
+                    checked={checked}
+                    onCheckedChange={(next) =>
+                      setCopyTargetDays((current) =>
+                        next ? [...current, weekday] : current.filter((day) => day !== weekday),
+                      )
+                    }
+                  />
+                  {DAY_NAMES[weekday]}
+                </label>
+              )
+            })}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCopySource(null)}>Cancelar</Button>
+            <Button disabled={copyTargetDays.length === 0} onClick={() => void copyScheduleToDays()}>Copiar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(disableTarget)} onOpenChange={(open) => !open && setDisableTarget(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Deshabilitar a {disableTarget?.fullName}</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Va a perder acceso al sistema hasta que lo vuelvas a habilitar. No se borra ningún dato histórico.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDisableTarget(null)}>Cancelar</Button>
+            <Button variant="destructive" onClick={() => void confirmDisableStaff()}>Deshabilitar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -734,61 +1026,118 @@ function BranchDialog({ editing, open, onOpenChange, value, onChange, onSave }: 
 
 const initialBranchForm = { name: '', address: '', phone: '', workingHours: DEFAULT_WORKING_HOURS }
 
-function StaffDialog({ editing, open, onOpenChange, branches, value, onChange, onSave }: {
+function StaffProfileDialog({ editing, open, onOpenChange, branches, value, onChange, documents, onFileChange, onSave }: {
   editing: boolean
   open: boolean
   onOpenChange: (open: boolean) => void
   branches: Branch[]
-  value: typeof initialStaffForm
-  onChange: (value: typeof initialStaffForm) => void
+  value: ProfileForm
+  onChange: (value: ProfileForm) => void
+  documents: BarberProfile['documents']
+  onFileChange: (file: File | null) => void
   onSave: () => void
 }) {
+  const isBarber = value.role === 'barber'
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>{editing ? 'Editar usuario' : 'Nuevo usuario'}</DialogTitle></DialogHeader>
-        <div className="flex flex-col gap-4">
-          <Field label="Nombre completo"><Input value={value.fullName} onChange={(event) => onChange({ ...value, fullName: event.target.value })} /></Field>
-          <Field label="Email"><Input type="email" value={value.email} disabled={editing} onChange={(event) => onChange({ ...value, email: event.target.value })} /></Field>
-          {!editing ? <Field label="Contraseña inicial"><Input type="password" value={value.password} onChange={(event) => onChange({ ...value, password: event.target.value })} /></Field> : null}
-          <Field label="Rol">
-            <Select
-              items={Object.entries(ROLE_LABELS).map(([key, label]) => ({ value: key, label }))}
-              value={value.role}
-              onValueChange={(role) => onChange({ ...value, role: (role ?? 'receptionist') as Staff['role'] })}
-            >
-              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-              <SelectContent><SelectGroup>{Object.entries(ROLE_LABELS).map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectGroup></SelectContent>
-            </Select>
-          </Field>
-          {value.role !== 'admin' ? (
-            <Field label="Sucursales">
-              <div className="flex flex-wrap gap-2">
-                {branches.map((branch) => {
-                  const selected = value.branchIds.includes(branch.id)
-                  return (
-                    <Button
-                      key={branch.id}
-                      type="button"
-                      variant={selected ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => onChange({
-                        ...value,
-                        branchIds: selected
-                          ? value.branchIds.filter((id) => id !== branch.id)
-                          : [...value.branchIds, branch.id],
-                      })}
-                    >
-                      {branch.name}
-                    </Button>
-                  )
-                })}
-              </div>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader><DialogTitle>{editing ? 'Editar persona' : 'Nueva persona'}</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-5">
+          <div className="flex flex-col gap-4">
+            <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">Datos básicos</p>
+            <Field label="Nombre completo"><Input value={value.fullName} onChange={(event) => onChange({ ...value, fullName: event.target.value })} /></Field>
+            <Field label="Email"><Input type="email" value={value.email} disabled={editing} onChange={(event) => onChange({ ...value, email: event.target.value })} /></Field>
+            {!editing ? <Field label="Contraseña inicial"><Input type="password" value={value.password} onChange={(event) => onChange({ ...value, password: event.target.value })} /></Field> : null}
+            <Field label="Rol">
+              <Select
+                items={Object.entries(ROLE_LABELS).map(([key, label]) => ({ value: key, label }))}
+                value={value.role}
+                onValueChange={(role) => onChange({ ...value, role: (role ?? 'receptionist') as Staff['role'] })}
+              >
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectGroup>{Object.entries(ROLE_LABELS).map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectGroup></SelectContent>
+              </Select>
             </Field>
+            {value.role !== 'admin' ? (
+              <Field label="Sucursales">
+                <div className="flex flex-wrap gap-2">
+                  {branches.map((branch) => {
+                    const selected = value.branchIds.includes(branch.id)
+                    return (
+                      <Button
+                        key={branch.id}
+                        type="button"
+                        variant={selected ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => onChange({
+                          ...value,
+                          branchIds: selected
+                            ? value.branchIds.filter((id) => id !== branch.id)
+                            : [...value.branchIds, branch.id],
+                        })}
+                      >
+                        {branch.name}
+                      </Button>
+                    )
+                  })}
+                </div>
+              </Field>
+            ) : null}
+            {isBarber ? <Field label="Comisión %"><Input value={value.commissionRate} onChange={(event) => onChange({ ...value, commissionRate: event.target.value })} /></Field> : null}
+          </div>
+
+          {isBarber ? (
+            <div className="flex flex-col gap-4 border-t pt-4">
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">Legajo</p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Dirección"><Input value={value.address} onChange={(event) => onChange({ ...value, address: event.target.value })} /></Field>
+                <Field label="Teléfono"><Input value={value.phone} onChange={(event) => onChange({ ...value, phone: event.target.value })} /></Field>
+                <Field label="Contacto de emergencia"><Input value={value.emergencyContactName} onChange={(event) => onChange({ ...value, emergencyContactName: event.target.value })} /></Field>
+                <Field label="Teléfono de emergencia"><Input value={value.emergencyContactPhone} onChange={(event) => onChange({ ...value, emergencyContactPhone: event.target.value })} /></Field>
+                <Field label="Fecha de ingreso"><Input type="date" value={value.hireDate} onChange={(event) => onChange({ ...value, hireDate: event.target.value })} /></Field>
+                <SelectField
+                  label="Vínculo"
+                  value={value.relationshipType}
+                  items={[
+                    { value: 'empleado', label: 'Empleado' },
+                    { value: 'socio', label: 'Socio' },
+                    { value: 'monotributista', label: 'Monotributista' },
+                    { value: 'colaborador', label: 'Colaborador' },
+                  ]}
+                  onChange={(relationshipType) => onChange({ ...value, relationshipType })}
+                />
+                <Field label="Vence certificado médico"><Input type="date" value={value.medicalCertExpiry} onChange={(event) => onChange({ ...value, medicalCertExpiry: event.target.value })} /></Field>
+                <Field label="Vence documentación"><Input type="date" value={value.documentationExpiry} onChange={(event) => onChange({ ...value, documentationExpiry: event.target.value })} /></Field>
+                <Field label="Color de agenda"><Input type="color" value={value.displayColor} onChange={(event) => onChange({ ...value, displayColor: event.target.value })} /></Field>
+                <div className="sm:col-span-2"><Field label="Notas internas"><Textarea value={value.internalNotes} onChange={(event) => onChange({ ...value, internalNotes: event.target.value })} /></Field></div>
+                <div className="sm:col-span-2">
+                  <Field label="Documento privado">
+                    <Input type="file" accept=".pdf,image/jpeg,image/png,image/webp" onChange={(event) => onFileChange(event.target.files?.[0] ?? null)} />
+                  </Field>
+                  {documents.length > 0 ? (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {documents.map((document) => (
+                        <Button
+                          key={document.id}
+                          variant="outline"
+                          size="sm"
+                          nativeButton={false}
+                          render={<a href={`/api/files/${document.id}/download`} target="_blank" rel="noreferrer" />}
+                        >
+                          <FileUp data-icon="inline-start" />{document.originalFilename}
+                        </Button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
           ) : null}
-          {value.role === 'barber' ? <Field label="Comisión %"><Input value={value.commissionRate} onChange={(event) => onChange({ ...value, commissionRate: event.target.value })} /></Field> : null}
         </div>
-        <DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button onClick={onSave}>{editing ? 'Guardar' : 'Crear usuario'}</Button></DialogFooter>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+          <Button onClick={onSave}><ShieldCheck data-icon="inline-start" />{editing ? 'Guardar' : 'Crear persona'}</Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
@@ -819,25 +1168,6 @@ function ServiceDialog({ editing, open, onOpenChange, value, onChange, onSave }:
   )
 }
 
-function ScheduleFields({ branches, barbers, value, onChange }: {
-  branches: Branch[]
-  barbers: Staff[]
-  value: { barberId: string; branchId: string; weekday: string; startTime: string; endTime: string }
-  onChange: (value: { barberId: string; branchId: string; weekday: string; startTime: string; endTime: string }) => void
-}) {
-  return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      <SelectField label="Barbero" value={value.barberId} items={barbers.map((barber) => ({ value: barber.id, label: barber.fullName }))} onChange={(barberId) => onChange({ ...value, barberId })} />
-      <SelectField label="Sucursal" value={value.branchId} items={branches.map((branch) => ({ value: branch.id, label: branch.name }))} onChange={(branchId) => onChange({ ...value, branchId })} />
-      <SelectField label="Día" value={value.weekday} items={DAY_NAMES.map((label, index) => ({ value: String(index), label }))} onChange={(weekday) => onChange({ ...value, weekday })} />
-      <div className="grid grid-cols-2 gap-2">
-        <Field label="Desde"><Input type="time" value={value.startTime} onChange={(event) => onChange({ ...value, startTime: event.target.value })} /></Field>
-        <Field label="Hasta"><Input type="time" value={value.endTime} onChange={(event) => onChange({ ...value, endTime: event.target.value })} /></Field>
-      </div>
-    </div>
-  )
-}
-
 function TimeOffFields({ branches, barbers, value, onChange }: {
   branches: Branch[]
   barbers: Staff[]
@@ -852,66 +1182,6 @@ function TimeOffFields({ branches, barbers, value, onChange }: {
       <Field label="Hasta"><Input type="datetime-local" value={value.endAt} onChange={(event) => onChange({ ...value, endAt: event.target.value })} /></Field>
       <div className="sm:col-span-2"><Field label="Motivo"><Input value={value.reason} onChange={(event) => onChange({ ...value, reason: event.target.value })} /></Field></div>
     </div>
-  )
-}
-
-function ProfileDialog({ open, onOpenChange, profile, onChange, onFileChange, onSave }: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  profile: BarberProfile | null
-  onChange: (profile: BarberProfile | null) => void
-  onFileChange: (file: File | null) => void
-  onSave: () => void
-}) {
-  if (!profile) return null
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
-        <DialogHeader><DialogTitle>Legajo · {profile.fullName}</DialogTitle></DialogHeader>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Dirección"><Input value={profile.address ?? ''} onChange={(event) => onChange({ ...profile, address: event.target.value })} /></Field>
-          <Field label="Teléfono"><Input value={profile.phone ?? ''} onChange={(event) => onChange({ ...profile, phone: event.target.value })} /></Field>
-          <Field label="Contacto de emergencia"><Input value={profile.emergencyContactName ?? ''} onChange={(event) => onChange({ ...profile, emergencyContactName: event.target.value })} /></Field>
-          <Field label="Teléfono de emergencia"><Input value={profile.emergencyContactPhone ?? ''} onChange={(event) => onChange({ ...profile, emergencyContactPhone: event.target.value })} /></Field>
-          <Field label="Fecha de ingreso"><Input type="date" value={profile.hireDate ?? ''} onChange={(event) => onChange({ ...profile, hireDate: event.target.value || null })} /></Field>
-          <SelectField
-            label="Vínculo"
-            value={profile.relationshipType ?? ''}
-            items={[
-              { value: 'empleado', label: 'Empleado' },
-              { value: 'socio', label: 'Socio' },
-              { value: 'monotributista', label: 'Monotributista' },
-              { value: 'colaborador', label: 'Colaborador' },
-            ]}
-            onChange={(relationshipType) => onChange({ ...profile, relationshipType })}
-          />
-          <Field label="Comisión %"><Input value={profile.commissionRate ?? ''} onChange={(event) => onChange({ ...profile, commissionRate: event.target.value || null })} /></Field>
-          <Field label="Vence certificado médico"><Input type="date" value={profile.medicalCertExpiry ?? ''} onChange={(event) => onChange({ ...profile, medicalCertExpiry: event.target.value || null })} /></Field>
-          <Field label="Vence documentación"><Input type="date" value={profile.documentationExpiry ?? ''} onChange={(event) => onChange({ ...profile, documentationExpiry: event.target.value || null })} /></Field>
-          <Field label="Color de agenda"><Input type="color" value={profile.displayColor ?? '#1f2937'} onChange={(event) => onChange({ ...profile, displayColor: event.target.value })} /></Field>
-          <div className="sm:col-span-2"><Field label="Notas internas"><Textarea value={profile.internalNotes ?? ''} onChange={(event) => onChange({ ...profile, internalNotes: event.target.value })} /></Field></div>
-          <div className="sm:col-span-2">
-            <Field label="Documento privado">
-              <Input type="file" accept=".pdf,image/jpeg,image/png,image/webp" onChange={(event) => onFileChange(event.target.files?.[0] ?? null)} />
-            </Field>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {profile.documents.map((document) => (
-                <Button
-                  key={document.id}
-                  variant="outline"
-                  size="sm"
-                  nativeButton={false}
-                  render={<a href={`/api/files/${document.id}/download`} target="_blank" rel="noreferrer" />}
-                >
-                  <FileUp data-icon="inline-start" />{document.originalFilename}
-                </Button>
-              ))}
-            </div>
-          </div>
-        </div>
-        <DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button onClick={onSave}><ShieldCheck data-icon="inline-start" />Guardar legajo</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
   )
 }
 
