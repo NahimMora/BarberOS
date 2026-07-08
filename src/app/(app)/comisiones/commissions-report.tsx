@@ -150,7 +150,6 @@ export function CommissionsReport({ role }: { role: 'admin' | 'barber' }) {
       <PageHeader
         eyebrow="Dinero"
         title="Comisiones"
-        description="Cada importe conserva la tasa aplicada al momento del cobro y se calcula sobre el total neto pagado."
         actions={(
           <div className="relative">
             <CalendarRange className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />

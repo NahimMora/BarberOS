@@ -417,7 +417,6 @@ export function CashConsole() {
       <PageHeader
         eyebrow="Dinero"
         title="Caja diaria"
-        description="Cobrá, separá cada medio de pago y cerrá el efectivo físico con una diferencia auditable."
         actions={(
           <Button
             variant="outline"

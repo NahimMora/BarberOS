@@ -449,7 +449,6 @@ export default function AgendaPage() {
       <PageHeader
         eyebrow="Agenda diaria"
         title="Turnos"
-        description="Organizá la jornada, resolvé cambios y avanzá cada atención desde un único lugar."
         actions={(
           <Button onClick={openNew} size="lg" className="min-h-10">
             <Plus data-icon="inline-start" />
