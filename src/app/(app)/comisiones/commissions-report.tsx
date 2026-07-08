@@ -29,6 +29,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
@@ -95,6 +103,9 @@ export function CommissionsReport({ role }: { role: 'admin' | 'barber' }) {
   const [loading, setLoading] = useState(true)
   const [settlingBarberId, setSettlingBarberId] = useState<string | null>(null)
   const [settleTarget, setSettleTarget] = useState<Summary | null>(null)
+  const [detailBarberFilter, setDetailBarberFilter] = useState('all')
+  const [detailBranchFilter, setDetailBranchFilter] = useState('all')
+  const [detailStatusFilter, setDetailStatusFilter] = useState('all')
 
   const loadReport = useCallback(async () => {
     setLoading(true)
@@ -115,6 +126,37 @@ export function CommissionsReport({ role }: { role: 'admin' | 'barber' }) {
   }, [loadReport])
 
   const totals = useMemo(() => totalsFor(report?.summary ?? []), [report])
+
+  const barberOptions = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const entry of report?.entries ?? []) map.set(entry.barberId, entry.barberName)
+    return Array.from(map, ([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label))
+  }, [report])
+  const branchOptions = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const entry of report?.entries ?? []) map.set(entry.branchId, entry.branchName)
+    return Array.from(map, ([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label))
+  }, [report])
+
+  const filteredEntries = useMemo(() => {
+    return (report?.entries ?? []).filter((entry) => {
+      if (detailBarberFilter !== 'all' && entry.barberId !== detailBarberFilter) return false
+      if (detailBranchFilter !== 'all' && entry.branchId !== detailBranchFilter) return false
+      if (detailStatusFilter !== 'all' && entry.status !== detailStatusFilter) return false
+      return true
+    })
+  }, [report, detailBarberFilter, detailBranchFilter, detailStatusFilter])
+
+  const groupedEntries = useMemo(() => {
+    if (role !== 'admin') return null
+    const map = new Map<string, { barberName: string; entries: Entry[] }>()
+    for (const entry of filteredEntries) {
+      const group = map.get(entry.barberId) ?? { barberName: entry.barberName, entries: [] }
+      group.entries.push(entry)
+      map.set(entry.barberId, group)
+    }
+    return Array.from(map.values()).sort((a, b) => a.barberName.localeCompare(b.barberName))
+  }, [role, filteredEntries])
 
   async function settle(barberId: string) {
     setSettlingBarberId(barberId)
@@ -291,47 +333,126 @@ export function CommissionsReport({ role }: { role: 'admin' | 'barber' }) {
               Servicio, cliente y sucursal de cada cobro — la base y la tasa quedan congeladas al momento del pago.
             </CardDescription>
           </CardHeader>
-          <CardContent className="overflow-x-auto px-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Fecha y hora</TableHead>
-                  {role === 'admin' ? <TableHead>Barbero</TableHead> : null}
-                  <TableHead>Servicio</TableHead>
-                  <TableHead>Cliente</TableHead>
-                  <TableHead>Sucursal</TableHead>
-                  <TableHead>Base</TableHead>
-                  <TableHead>Tasa</TableHead>
-                  <TableHead>Comisión</TableHead>
-                  <TableHead>Estado</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {report.entries.map((entry) => (
-                  <TableRow key={entry.id}>
-                    <TableCell className="font-mono text-sm tabular-nums whitespace-nowrap">
-                      {new Date(entry.paidAt).toLocaleDateString('es-AR')}
-                      {' · '}
-                      {new Date(entry.paidAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
-                    </TableCell>
-                    {role === 'admin' ? <TableCell className="font-medium">{entry.barberName}</TableCell> : null}
-                    <TableCell className="max-w-48 truncate" title={entry.services.join(', ')}>
-                      {entry.services.length > 0 ? entry.services.join(', ') : '—'}
-                    </TableCell>
-                    <TableCell>{entry.clientName ?? 'Walk-in'}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{entry.branchName}</TableCell>
-                    <TableCell>{formatArs(entry.baseAmount)}</TableCell>
-                    <TableCell>{entry.rateSnapshot}%</TableCell>
-                    <TableCell className="font-bold">{formatArs(entry.commissionAmount)}</TableCell>
-                    <TableCell>
-                      <Badge variant={entry.status === 'paid' ? 'secondary' : 'outline'}>
-                        {entry.status === 'paid' ? 'Liquidada' : 'Pendiente'}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
+          <CardContent className="flex flex-col gap-4 px-0">
+            <div className="flex flex-wrap gap-2 px-4">
+              {role === 'admin' ? (
+                <FilterSelect
+                  label="Barbero"
+                  value={detailBarberFilter}
+                  onChange={setDetailBarberFilter}
+                  items={[{ value: 'all', label: 'Todos los barberos' }, ...barberOptions]}
+                />
+              ) : null}
+              <FilterSelect
+                label="Sucursal"
+                value={detailBranchFilter}
+                onChange={setDetailBranchFilter}
+                items={[{ value: 'all', label: 'Todas las sucursales' }, ...branchOptions]}
+              />
+              <FilterSelect
+                label="Estado"
+                value={detailStatusFilter}
+                onChange={setDetailStatusFilter}
+                items={[
+                  { value: 'all', label: 'Todos los estados' },
+                  { value: 'pending', label: 'Pendiente' },
+                  { value: 'paid', label: 'Liquidada' },
+                ]}
+              />
+            </div>
+
+            {filteredEntries.length === 0 ? (
+              <p className="px-4 py-8 text-center text-sm text-muted-foreground">Sin resultados para este filtro.</p>
+            ) : role === 'admin' ? (
+              <div className="flex flex-col gap-5">
+                {groupedEntries?.map((group) => (
+                  <div key={group.barberName} className="overflow-x-auto px-4">
+                    <p className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                      {group.barberName} · {group.entries.length} venta{group.entries.length === 1 ? '' : 's'}
+                    </p>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Fecha y hora</TableHead>
+                          <TableHead>Servicio</TableHead>
+                          <TableHead>Cliente</TableHead>
+                          <TableHead>Sucursal</TableHead>
+                          <TableHead>Base</TableHead>
+                          <TableHead>Tasa</TableHead>
+                          <TableHead>Comisión</TableHead>
+                          <TableHead>Estado</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {group.entries.map((entry) => (
+                          <TableRow key={entry.id}>
+                            <TableCell className="font-mono text-sm tabular-nums whitespace-nowrap">
+                              {new Date(entry.paidAt).toLocaleDateString('es-AR')}
+                              {' · '}
+                              {new Date(entry.paidAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                            </TableCell>
+                            <TableCell className="max-w-48 truncate" title={entry.services.join(', ')}>
+                              {entry.services.length > 0 ? entry.services.join(', ') : '—'}
+                            </TableCell>
+                            <TableCell>{entry.clientName ?? 'Walk-in'}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground">{entry.branchName}</TableCell>
+                            <TableCell>{formatArs(entry.baseAmount)}</TableCell>
+                            <TableCell>{entry.rateSnapshot}%</TableCell>
+                            <TableCell className="font-bold">{formatArs(entry.commissionAmount)}</TableCell>
+                            <TableCell>
+                              <Badge variant={entry.status === 'paid' ? 'secondary' : 'outline'}>
+                                {entry.status === 'paid' ? 'Liquidada' : 'Pendiente'}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
                 ))}
-              </TableBody>
-            </Table>
+              </div>
+            ) : (
+              <div className="overflow-x-auto px-4">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Fecha y hora</TableHead>
+                      <TableHead>Servicio</TableHead>
+                      <TableHead>Cliente</TableHead>
+                      <TableHead>Sucursal</TableHead>
+                      <TableHead>Base</TableHead>
+                      <TableHead>Tasa</TableHead>
+                      <TableHead>Comisión</TableHead>
+                      <TableHead>Estado</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredEntries.map((entry) => (
+                      <TableRow key={entry.id}>
+                        <TableCell className="font-mono text-sm tabular-nums whitespace-nowrap">
+                          {new Date(entry.paidAt).toLocaleDateString('es-AR')}
+                          {' · '}
+                          {new Date(entry.paidAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                        </TableCell>
+                        <TableCell className="max-w-48 truncate" title={entry.services.join(', ')}>
+                          {entry.services.length > 0 ? entry.services.join(', ') : '—'}
+                        </TableCell>
+                        <TableCell>{entry.clientName ?? 'Walk-in'}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{entry.branchName}</TableCell>
+                        <TableCell>{formatArs(entry.baseAmount)}</TableCell>
+                        <TableCell>{entry.rateSnapshot}%</TableCell>
+                        <TableCell className="font-bold">{formatArs(entry.commissionAmount)}</TableCell>
+                        <TableCell>
+                          <Badge variant={entry.status === 'paid' ? 'secondary' : 'outline'}>
+                            {entry.status === 'paid' ? 'Liquidada' : 'Pendiente'}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
           </CardContent>
         </Card>
       ) : null}
@@ -377,6 +498,33 @@ export function CommissionsReport({ role }: { role: 'admin' | 'barber' }) {
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+function FilterSelect({
+  label,
+  value,
+  items,
+  onChange,
+}: {
+  label: string
+  value: string
+  items: { value: string; label: string }[]
+  onChange: (value: string) => void
+}) {
+  return (
+    <Select items={items} value={value} onValueChange={(next) => onChange(next ?? 'all')}>
+      <SelectTrigger size="sm" className="w-auto min-w-40">
+        <SelectValue placeholder={label} />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectGroup>
+          {items.map((item) => (
+            <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
   )
 }
 
