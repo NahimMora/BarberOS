@@ -45,7 +45,7 @@ export default function LoginPage() {
         <div className="absolute inset-0 opacity-30 [background-image:radial-gradient(circle_at_15%_20%,var(--sidebar-primary)_0,transparent_25rem),linear-gradient(135deg,transparent_48%,var(--sidebar-border)_49%,transparent_50%)]" />
         <BrandMark className="relative [&_[class*=text-muted]]:text-sidebar-foreground/50" />
         <div className="relative max-w-xl">
-          <p className="mb-5 text-xs font-bold uppercase tracking-[0.24em] text-sidebar-primary">
+          <p className="mb-5 text-xs font-bold uppercase tracking-wide text-sidebar-primary">
             Gestión diaria de barbería
           </p>
           <h1 className="font-heading text-6xl font-semibold leading-[0.95] tracking-tight text-balance xl:text-7xl">
@@ -73,7 +73,7 @@ export default function LoginPage() {
           <CardHeader className="gap-3 p-6 sm:p-8">
             <BrandMark className="mb-4 lg:hidden" />
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary/70">Acceso seguro</p>
+              <p className="text-xs font-bold uppercase tracking-wide text-primary/70">Acceso seguro</p>
               <CardTitle className="mt-2 font-heading text-4xl">Volvé al taller.</CardTitle>
               <CardDescription className="mt-2 leading-6">
                 Ingresá con tu cuenta para continuar con la operación.

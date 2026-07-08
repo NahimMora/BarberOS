@@ -513,7 +513,7 @@ export default function AgendaPage() {
         <CardContent className="flex flex-col gap-5 py-1">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">Fecha de trabajo</p>
+              <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Fecha de trabajo</p>
               <p className="mt-1 font-heading text-2xl font-semibold capitalize">{formattedDate}</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -1126,7 +1126,7 @@ function AgendaStat({
 
   return (
     <div className="rounded-xl bg-muted/55 px-3 py-3 sm:px-4">
-      <p className="text-[0.65rem] font-bold uppercase tracking-[0.12em] text-muted-foreground">{label}</p>
+      <p className="text-[0.65rem] font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
       <p className={`mt-1 font-mono text-2xl font-semibold tabular-nums ${toneClass}`}>{value}</p>
     </div>
   )

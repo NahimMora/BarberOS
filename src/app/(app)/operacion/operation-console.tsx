@@ -1081,7 +1081,7 @@ function ResourceCard({ title, description, action, children }: {
 function OperationStat({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-2xl border border-border/70 p-4 shadow-sm">
-      <p className="text-[0.65rem] font-bold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
+      <p className="text-[0.65rem] font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
       <p className="mt-2 font-mono text-2xl font-semibold tabular-nums text-primary">{value}</p>
     </div>
   )
@@ -1172,7 +1172,7 @@ function StaffProfileDialog({ editing, open, onOpenChange, branches, value, onCh
         <DialogHeader><DialogTitle>{editing ? 'Editar persona' : 'Nueva persona'}</DialogTitle></DialogHeader>
         <div className="flex flex-col gap-5">
           <div className="flex flex-col gap-4">
-            <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">Datos básicos</p>
+            <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Datos básicos</p>
             <Field label="Nombre completo"><Input value={value.fullName} onChange={(event) => onChange({ ...value, fullName: event.target.value })} /></Field>
             <Field label="Email"><Input type="email" value={value.email} disabled={editing} onChange={(event) => onChange({ ...value, email: event.target.value })} /></Field>
             {!editing ? <Field label="Contraseña inicial"><Input type="password" value={value.password} onChange={(event) => onChange({ ...value, password: event.target.value })} /></Field> : null}
@@ -1216,7 +1216,7 @@ function StaffProfileDialog({ editing, open, onOpenChange, branches, value, onCh
 
           {isBarber ? (
             <div className="flex flex-col gap-4 border-t pt-4">
-              <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">Legajo</p>
+              <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Legajo</p>
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Dirección"><Input value={value.address} onChange={(event) => onChange({ ...value, address: event.target.value })} /></Field>
                 <Field label="Teléfono"><Input value={value.phone} onChange={(event) => onChange({ ...value, phone: event.target.value })} /></Field>

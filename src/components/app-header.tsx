@@ -43,7 +43,7 @@ export function AppHeader({ user }: { user: AppUser }) {
       <div className="flex items-center gap-4">
         <BrandMark compact className="md:hidden" />
         <div className="hidden flex-col sm:flex">
-          <span className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
+          <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
             {roleLabel[user.role]}
           </span>
           <span className="text-sm font-semibold capitalize">{today}</span>

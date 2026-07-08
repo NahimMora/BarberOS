@@ -199,7 +199,7 @@ function BarberMetrics({
   return (
     <section className="overflow-hidden rounded-3xl border border-border">
       <div className="border-b border-border/70 px-6 py-4">
-        <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">
+        <p className="text-xs font-bold uppercase tracking-wide text-primary">
           Resultado · {monthLabel}
         </p>
       </div>
@@ -245,7 +245,7 @@ function Metric({
     <div className={cn('relative min-h-40 p-6', emphasis && 'bg-primary text-primary-foreground')}>
       <div className="mb-8 flex items-center justify-between gap-3">
         <p className={cn(
-          'text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground',
+          'text-xs font-bold uppercase tracking-wide text-muted-foreground',
           emphasis && 'text-primary-foreground/70',
         )}>
           {label}
@@ -383,7 +383,7 @@ function BranchOverview({ data }: { data: DashboardData }) {
   return (
     <section className="flex flex-col gap-4">
       <div>
-        <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Sucursales</p>
+        <p className="text-xs font-bold uppercase tracking-wide text-primary">Sucursales</p>
         <h2 className="mt-1 font-heading text-2xl font-semibold">Pulso operativo</h2>
       </div>
       {data.branches.length === 0 ? (

@@ -41,7 +41,7 @@ export default function RecuperarContrasenaPage() {
           <BrandMark className="mb-4" />
           {sent ? (
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary/70">Revisá tu correo</p>
+              <p className="text-xs font-bold uppercase tracking-wide text-primary/70">Revisá tu correo</p>
               <CardTitle className="mt-2 font-heading text-3xl">Te enviamos las instrucciones.</CardTitle>
               <CardDescription className="mt-2 leading-6">
                 Si el email ingresado está registrado, vas a recibir un correo con un enlace para elegir una contraseña nueva.
@@ -49,7 +49,7 @@ export default function RecuperarContrasenaPage() {
             </div>
           ) : (
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary/70">Acceso seguro</p>
+              <p className="text-xs font-bold uppercase tracking-wide text-primary/70">Acceso seguro</p>
               <CardTitle className="mt-2 font-heading text-3xl">¿Olvidaste tu contraseña?</CardTitle>
               <CardDescription className="mt-2 leading-6">
                 Ingresá tu email y te mandamos un enlace para elegir una contraseña nueva.

@@ -62,7 +62,7 @@ export default function RestablecerContrasenaPage() {
         <CardHeader className="gap-3 p-6 sm:p-8">
           <BrandMark className="mb-4" />
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary/70">Acceso seguro</p>
+            <p className="text-xs font-bold uppercase tracking-wide text-primary/70">Acceso seguro</p>
             <CardTitle className="mt-2 font-heading text-3xl">Elegí una contraseña nueva.</CardTitle>
             <CardDescription className="mt-2 leading-6">
               Usá al menos {MIN_PASSWORD_LENGTH} caracteres. Vas a poder ingresar apenas la confirmes.

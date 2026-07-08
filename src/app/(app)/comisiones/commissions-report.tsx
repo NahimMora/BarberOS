@@ -543,7 +543,7 @@ function ReportStat({
     <Card className={accent ? 'border-primary/30 bg-primary text-primary-foreground' : ''}>
       <CardContent className="flex items-start justify-between gap-3">
         <div>
-          <p className={`text-xs font-bold uppercase tracking-[0.12em] ${accent ? 'text-primary-foreground/60' : 'text-muted-foreground'}`}>
+          <p className={`text-xs font-bold uppercase tracking-wide ${accent ? 'text-primary-foreground/60' : 'text-muted-foreground'}`}>
             {label}
           </p>
           <p className="mt-2 font-heading text-2xl font-semibold">{value}</p>

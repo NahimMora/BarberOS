@@ -10,7 +10,7 @@ export function BrandMark({ compact = false, className }: { compact?: boolean; c
       {compact ? null : (
         <div className="flex flex-col leading-none">
           <span className="font-heading text-xl font-semibold tracking-tight">BarberOS</span>
-          <span className="mt-1 text-[0.62rem] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+          <span className="mt-1 text-[0.62rem] font-semibold uppercase tracking-wide text-muted-foreground">
             Taller operativo
           </span>
         </div>

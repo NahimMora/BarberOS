@@ -45,7 +45,7 @@ export function AppSidebar({ role }: { role: Role }) {
       <div className="mb-8 px-2">
         <BrandMark />
       </div>
-      <p className="mb-2 px-3 text-[0.65rem] font-bold uppercase tracking-[0.2em] text-sidebar-foreground/45">
+      <p className="mb-2 px-3 text-[0.65rem] font-bold uppercase tracking-wide text-sidebar-foreground/45">
         Espacio de trabajo
       </p>
       <nav className="flex flex-col gap-1.5">
