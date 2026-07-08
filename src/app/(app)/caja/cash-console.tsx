@@ -4,8 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ArrowDownLeft,
   ArrowUpRight,
-  ChevronDown,
-  ChevronUp,
+  Ban,
   CircleDollarSign,
   CreditCard,
   Landmark,
@@ -144,7 +143,8 @@ export function CashConsole() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [openingAmount, setOpeningAmount] = useState('0.00')
-  const [quickSaleOpen, setQuickSaleOpen] = useState(false)
+  const [quickSaleDialogOpen, setQuickSaleDialogOpen] = useState(false)
+  const [voidSaleDialogOpen, setVoidSaleDialogOpen] = useState(false)
   const [barberId, setBarberId] = useState('')
   const [clientId, setClientId] = useState(ANONYMOUS_CLIENT)
   const [selectedServiceId, setSelectedServiceId] = useState('')
@@ -302,7 +302,7 @@ export function CashConsole() {
       setItems([])
       setDiscount('0.00')
       setPaymentNote('')
-      setQuickSaleOpen(false)
+      setQuickSaleDialogOpen(false)
       await refreshBranch(false)
     } finally {
       setSavingSale(false)
@@ -496,101 +496,96 @@ export function CashConsole() {
         </Card>
       ) : (
         <>
-          <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
-            <div className="flex flex-col gap-5">
-              <Card elevated>
-                <CardHeader>
-                  <CardTitle className="text-2xl">Control de efectivo</CardTitle>
-                  <CardDescription>
-                    Esperado en billetes: solo este importe se compara con el conteo físico al cerrar.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="flex flex-col gap-4">
-                  <div className="rounded-2xl bg-secondary p-5">
-                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
-                      Esperado en billetes
-                    </p>
-                    <p className="mt-2 font-mono text-4xl font-semibold tabular-nums">
-                      {formatArs(cash.liveSnapshot?.expectedCash)}
-                    </p>
-                  </div>
-                  <section className="grid grid-cols-2 gap-3 md:grid-cols-3">
-                    <MoneyStat icon={Landmark} label="Transferencias" value={cash.liveSnapshot?.expectedTransfer} />
-                    <MoneyStat icon={CreditCard} label="Tarjetas" value={cash.liveSnapshot?.expectedCard} />
-                    <MoneyStat icon={Smartphone} label="Mercado Pago" value={cash.liveSnapshot?.expectedMercadopagoManual} />
-                    <MoneyStat icon={WalletCards} label="Total operativo" value={cash.liveSnapshot?.expectedTotal} accent />
-                  </section>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button variant="outline" onClick={() => setMovementOpen(true)}>
-                      <ArrowDownLeft />
-                      Movimiento
+          <div className="flex flex-col gap-5">
+            <Card elevated>
+              <CardHeader>
+                <CardTitle className="text-2xl">Control de efectivo</CardTitle>
+                <CardDescription>
+                  Esperado en billetes: solo este importe se compara con el conteo físico al cerrar.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                <div className="rounded-2xl bg-secondary p-5">
+                  <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                    Esperado en billetes
+                  </p>
+                  <p className="mt-2 font-mono text-4xl font-semibold tabular-nums">
+                    {formatArs(cash.liveSnapshot?.expectedCash)}
+                  </p>
+                </div>
+                <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                  <MoneyStat icon={Landmark} label="Transferencias" value={cash.liveSnapshot?.expectedTransfer} />
+                  <MoneyStat icon={CreditCard} label="Tarjetas" value={cash.liveSnapshot?.expectedCard} />
+                  <MoneyStat icon={Smartphone} label="Mercado Pago" value={cash.liveSnapshot?.expectedMercadopagoManual} />
+                  <MoneyStat icon={WalletCards} label="Total operativo" value={cash.liveSnapshot?.expectedTotal} accent />
+                </section>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" onClick={() => setMovementOpen(true)}>
+                    <ArrowDownLeft />
+                    Movimiento
+                  </Button>
+                  <Button variant="outline" onClick={() => setQuickSaleDialogOpen(true)}>
+                    <CircleDollarSign />
+                    Venta rápida
+                  </Button>
+                  {context.user.role === 'admin' ? (
+                    <Button variant="outline" onClick={() => setVoidSaleDialogOpen(true)}>
+                      <Ban />
+                      Anular venta
                     </Button>
-                    <Button variant="destructive" onClick={() => setCloseOpen(true)}>
-                      <LockKeyhole />
-                      Cerrar caja
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Últimos movimientos</CardTitle>
-                  <CardDescription>{cash.movements.length} registros en la sesión.</CardDescription>
-                </CardHeader>
-                <CardContent className="px-0">
-                  <div className="max-h-96 overflow-auto">
-                    {cash.movements.length === 0 ? (
-                      <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-                        Todavía no hay movimientos.
-                      </p>
-                    ) : cash.movements.slice(0, 12).map((movement) => {
-                      const negative = movement.type === 'expense' || movement.type === 'withdrawal'
-                      return (
-                        <div key={movement.id} className="flex items-center gap-3 border-t px-4 py-2.5 first:border-t-0">
-                          <div className={`flex size-8 shrink-0 items-center justify-center rounded-xl ${negative ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success'}`}>
-                            {negative ? <ArrowUpRight className="size-4" /> : <ArrowDownLeft className="size-4" />}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-bold">{movement.note || movementLabels[movement.type]}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {paymentLabels[movement.paymentMethod]} · {new Date(movement.createdAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
-                            </p>
-                          </div>
-                          <p className={`shrink-0 font-mono text-sm font-bold tabular-nums ${negative ? 'text-destructive' : ''}`}>
-                            {negative ? '-' : ''}{formatArs(movement.amount)}
-                          </p>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+                  ) : null}
+                  <Button variant="destructive" onClick={() => setCloseOpen(true)}>
+                    <LockKeyhole />
+                    Cerrar caja
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
 
             <Card>
-              <CardHeader className="flex-row items-start justify-between gap-3">
-                <div className="flex flex-col gap-1">
-                  <Badge variant="secondary" className="w-fit">Ajuste operativo</Badge>
-                  <CardTitle>Venta rápida (sin turno)</CardTitle>
-                  <CardDescription>
-                    Solo para un walk-in que no pasó por Agenda. Para cobrar un turno agendado,
-                    hacelo desde Agenda al completarlo.
-                  </CardDescription>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setQuickSaleOpen((current) => !current)}
-                >
-                  {quickSaleOpen ? <ChevronUp /> : <ChevronDown />}
-                  {quickSaleOpen ? 'Ocultar' : 'Registrar'}
-                </Button>
+              <CardHeader>
+                <CardTitle>Últimos movimientos</CardTitle>
+                <CardDescription>{cash.movements.length} registros en la sesión.</CardDescription>
               </CardHeader>
-              {quickSaleOpen ? (
-                <CardContent>
-                  <FieldGroup>
+              <CardContent className="px-0">
+                <div className="max-h-96 overflow-auto">
+                  {cash.movements.length === 0 ? (
+                    <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+                      Todavía no hay movimientos.
+                    </p>
+                  ) : cash.movements.slice(0, 12).map((movement) => {
+                    const negative = movement.type === 'expense' || movement.type === 'withdrawal'
+                    return (
+                      <div key={movement.id} className="flex items-center gap-3 border-t px-4 py-2.5 first:border-t-0">
+                        <div className={`flex size-8 shrink-0 items-center justify-center rounded-xl ${negative ? 'bg-destructive/10 text-destructive' : 'bg-success/10 text-success'}`}>
+                          {negative ? <ArrowUpRight className="size-4" /> : <ArrowDownLeft className="size-4" />}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-bold">{movement.note || movementLabels[movement.type]}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {paymentLabels[movement.paymentMethod]} · {new Date(movement.createdAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                        </div>
+                        <p className={`shrink-0 font-mono text-sm font-bold tabular-nums ${negative ? 'text-destructive' : ''}`}>
+                          {negative ? '-' : ''}{formatArs(movement.amount)}
+                        </p>
+                      </div>
+                    )
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Dialog open={quickSaleDialogOpen} onOpenChange={setQuickSaleDialogOpen}>
+            <DialogContent className="sm:max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Venta rápida (sin turno)</DialogTitle>
+                <DialogDescription>
+                  Solo para cobros sin turno. Para turnos, cobrá desde Agenda.
+                </DialogDescription>
+              </DialogHeader>
+              <FieldGroup>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <Field>
                         <FieldLabel>Barbero</FieldLabel>
@@ -729,31 +724,32 @@ export function CashConsole() {
                       />
                     </Field>
 
-                    <div className="flex flex-col gap-3 rounded-2xl bg-primary p-4 text-primary-foreground sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-primary-foreground/60">
-                          Total a cobrar
-                        </p>
-                        <p className="mt-1 font-mono text-3xl font-semibold tabular-nums">
-                          {formatArs(saleTotals?.total)}
-                        </p>
-                      </div>
-                      <Button
-                        size="lg"
-                        variant="secondary"
-                        className="min-h-11"
-                        disabled={savingSale}
-                        onClick={() => void chargeSale()}
-                      >
-                        <CircleDollarSign />
-                        {savingSale ? 'Registrando...' : 'Confirmar cobro'}
-                      </Button>
+                    <div className="rounded-2xl bg-primary p-4 text-primary-foreground">
+                      <p className="text-xs font-bold uppercase tracking-wide text-primary-foreground/60">
+                        Total a cobrar
+                      </p>
+                      <p className="mt-1 font-mono text-3xl font-semibold tabular-nums">
+                        {formatArs(saleTotals?.total)}
+                      </p>
                     </div>
                   </FieldGroup>
-                </CardContent>
-              ) : null}
-            </Card>
-          </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setQuickSaleDialogOpen(false)}>Cancelar</Button>
+                <Button disabled={savingSale} onClick={() => void chargeSale()}>
+                  <CircleDollarSign />
+                  {savingSale ? 'Registrando...' : 'Confirmar cobro'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {context.user.role === 'admin' ? (
+            <Dialog open={voidSaleDialogOpen} onOpenChange={setVoidSaleDialogOpen}>
+              <DialogContent className="sm:max-w-4xl">
+                <VoidSalePanel branches={context.branches} />
+              </DialogContent>
+            </Dialog>
+          ) : null}
         </>
       )}
 
@@ -800,10 +796,6 @@ export function CashConsole() {
             </Table>
           </CardContent>
         </Card>
-      ) : null}
-
-      {context.user.role === 'admin' ? (
-        <VoidSalePanel branches={context.branches} />
       ) : null}
 
       <Dialog open={movementOpen} onOpenChange={setMovementOpen}>
