@@ -22,8 +22,8 @@ Completá las 5 variables en `.env.local`:
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase → Project Settings → API |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase → Project Settings → API |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API (secret) |
-| `DATABASE_URL` | Supabase → Project Settings → Database → Connection Pooling → Transaction mode (puerto 6543) |
-| `DIRECT_URL` | Supabase → Project Settings → Database → Direct Connection (puerto 5432) |
+| `DATABASE_URL` | Supabase → Project Settings → Database → Connection Pooling → Session mode (puerto 5432) |
+| `DIRECT_URL` | Igual que `DATABASE_URL` — ver comentarios en `.env.example` sobre por qué |
 
 ### 2. Instalar dependencias
 
@@ -75,3 +75,7 @@ npm run db:seed      # cargar datos demo (idempotente)
 ## Arquitectura
 
 Ver [`docs/PRD.md`](docs/PRD.md) para el detalle completo del producto y [`AGENTS.md`](AGENTS.md) para las reglas técnicas.
+
+## Producción
+
+Ver [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) para desplegar en Railway o Render, y [`docs/PRODUCTION_READINESS.md`](docs/PRODUCTION_READINESS.md) para el estado actual del MVP.
