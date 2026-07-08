@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Checkbox } from '@/components/ui/checkbox'
 import {
   Empty,
   EmptyDescription,
@@ -11,18 +10,10 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '@/components/ui/empty'
-import { Field, FieldContent, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Textarea } from '@/components/ui/textarea'
 import { PageHeader } from '@/components/page-header'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog'
+import { ClientFormDialog, type ClientRecord } from '@/components/clients/client-form-dialog'
 import {
   Table,
   TableBody,
@@ -35,36 +26,7 @@ import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
 import { Pencil, Plus, Search, UserRoundSearch } from 'lucide-react'
 
-type Client = {
-  id: string
-  firstName: string | null
-  lastName: string | null
-  whatsappRaw: string | null
-  whatsappE164: string | null
-  notes: string | null
-  active: boolean
-  createdAt: string
-  consentData: boolean
-  consentWhatsapp: boolean
-}
-
-type ClientForm = {
-  firstName: string
-  lastName: string
-  whatsappRaw: string
-  notes: string
-  consentData: boolean
-  consentWhatsapp: boolean
-}
-
-const empty: ClientForm = {
-  firstName: '',
-  lastName: '',
-  whatsappRaw: '',
-  notes: '',
-  consentData: false,
-  consentWhatsapp: false,
-}
+type Client = ClientRecord
 
 export default function ClientesPage() {
   const [clients, setClients] = useState<Client[]>([])
@@ -72,9 +34,6 @@ export default function ClientesPage() {
   const [loading, setLoading] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Client | null>(null)
-  const [form, setForm] = useState<ClientForm>(empty)
-  const [saving, setSaving] = useState(false)
-  const [initialConsent, setInitialConsent] = useState<{ consentData: boolean; consentWhatsapp: boolean } | null>(null)
 
   const fetchClients = useCallback(async () => {
     setLoading(true)
@@ -98,66 +57,12 @@ export default function ClientesPage() {
 
   function openNew() {
     setEditing(null)
-    setForm(empty)
-    setInitialConsent(null)
     setDialogOpen(true)
   }
 
   function openEdit(c: Client) {
     setEditing(c)
-    setForm({
-      firstName: c.firstName ?? '',
-      lastName: c.lastName ?? '',
-      whatsappRaw: c.whatsappRaw ?? '',
-      notes: c.notes ?? '',
-      consentData: c.consentData,
-      consentWhatsapp: c.consentWhatsapp,
-    })
-    setInitialConsent({ consentData: c.consentData, consentWhatsapp: c.consentWhatsapp })
     setDialogOpen(true)
-  }
-
-  async function handleSave() {
-    setSaving(true)
-    try {
-      const url = editing ? `/api/clients/${editing.id}` : '/api/clients'
-      const method = editing ? 'PATCH' : 'POST'
-      const payload: Record<string, unknown> = {
-        firstName: form.firstName,
-        lastName: form.lastName,
-        whatsappRaw: form.whatsappRaw,
-        notes: form.notes,
-      }
-      if (!editing) {
-        payload.consentData = form.consentData
-        payload.consentWhatsapp = form.consentWhatsapp
-      } else {
-        if (form.consentData !== initialConsent?.consentData) payload.consentData = form.consentData
-        if (form.consentWhatsapp !== initialConsent?.consentWhatsapp) payload.consentWhatsapp = form.consentWhatsapp
-      }
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-
-      if (res.status === 409) {
-        const json = await res.json()
-        toast.error(json.error ?? 'Número de WhatsApp ya registrado')
-        return
-      }
-      if (!res.ok) {
-        const json = await res.json()
-        toast.error(json.error ?? 'Error al guardar')
-        return
-      }
-
-      toast.success(editing ? 'Cliente actualizado' : 'Cliente creado')
-      setDialogOpen(false)
-      fetchClients()
-    } finally {
-      setSaving(false)
-    }
   }
 
   return (
@@ -281,79 +186,12 @@ export default function ClientesPage() {
         </div>
       ) : null}
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{editing ? 'Editar cliente' : 'Nuevo cliente'}</DialogTitle>
-          </DialogHeader>
-          <FieldGroup>
-            <div className="grid grid-cols-2 gap-3">
-              <Field>
-                <FieldLabel htmlFor="firstName">Nombre</FieldLabel>
-                <Input
-                  id="firstName"
-                  value={form.firstName}
-                  onChange={(e) => setForm({ ...form, firstName: e.target.value })}
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="lastName">Apellido</FieldLabel>
-                <Input
-                  id="lastName"
-                  value={form.lastName}
-                  onChange={(e) => setForm({ ...form, lastName: e.target.value })}
-                />
-              </Field>
-            </div>
-            <Field>
-              <FieldLabel htmlFor="whatsapp">WhatsApp</FieldLabel>
-              <Input
-                id="whatsapp"
-                placeholder="+5491155556666 o 1155556666"
-                value={form.whatsappRaw}
-                onChange={(e) => setForm({ ...form, whatsappRaw: e.target.value })}
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="notes">Notas</FieldLabel>
-              <Textarea
-                id="notes"
-                rows={3}
-                value={form.notes}
-                onChange={(e) => setForm({ ...form, notes: e.target.value })}
-              />
-            </Field>
-            <Field orientation="horizontal" className="rounded-xl border border-border/70 bg-muted/45 p-3">
-              <Checkbox
-                id="consentData"
-                checked={form.consentData}
-                onCheckedChange={(checked) => setForm({ ...form, consentData: checked })}
-              />
-              <FieldContent>
-                <FieldLabel htmlFor="consentData">Uso de datos personales</FieldLabel>
-                <p className="text-xs text-muted-foreground">Registra la fecha del consentimiento.</p>
-              </FieldContent>
-            </Field>
-            <Field orientation="horizontal" className="rounded-xl border border-border/70 bg-muted/45 p-3">
-              <Checkbox
-                id="consentWhatsapp"
-                checked={form.consentWhatsapp}
-                onCheckedChange={(checked) => setForm({ ...form, consentWhatsapp: checked })}
-              />
-              <FieldContent>
-                <FieldLabel htmlFor="consentWhatsapp">Contacto por WhatsApp</FieldLabel>
-                <p className="text-xs text-muted-foreground">Autoriza comunicaciones por este canal.</p>
-              </FieldContent>
-            </Field>
-          </FieldGroup>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving ? 'Guardando…' : 'Guardar'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ClientFormDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        client={editing}
+        onSaved={() => fetchClients()}
+      />
     </div>
   )
 }

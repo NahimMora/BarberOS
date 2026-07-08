@@ -32,6 +32,15 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
+  Combobox,
+  ComboboxInputGroup,
+  ComboboxInput,
+  ComboboxTrailingIcon,
+  ComboboxPopup,
+  ComboboxItem,
+  ComboboxEmpty,
+} from '@/components/ui/combobox'
+import {
   Table,
   TableBody,
   TableCell,
@@ -54,10 +63,13 @@ import {
   Minus,
   PlayCircle,
   Plus,
+  UserPlus,
   UserX,
   X,
 } from 'lucide-react'
 import { calculateSaleTotals } from '@/lib/money/money'
+import { ClientFormDialog, type ClientRecord } from '@/components/clients/client-form-dialog'
+import { ClientQuickViewSheet } from '@/components/clients/client-quick-view-sheet'
 
 type Appointment = {
   id: string
@@ -76,7 +88,6 @@ type Appointment = {
 
 type AppointmentServiceLine = { serviceId: string; priceAtTime: string; durationAtTime: number }
 
-type Client = { id: string; firstName: string | null; lastName: string | null; whatsappRaw: string | null }
 type Service = { id: string; name: string; durationMinutes: number; price: string }
 type Slot = { startAt: string; endAt: string }
 type Branch = { id: string; name: string; timezone: string | null }
@@ -154,7 +165,6 @@ export default function AgendaPage() {
 
   // New appointment dialog
   const [newOpen, setNewOpen] = useState(false)
-  const [clients, setClients] = useState<Client[]>([])
   const [services, setServices] = useState<Service[]>([])
   const [branches, setBranches] = useState<Branch[]>([])
   const [barbers, setBarbers] = useState<Barber[]>([])
@@ -162,11 +172,24 @@ export default function AgendaPage() {
   const [barberId, setBarberId] = useState('')
   const [branchId, setBranchId] = useState('')
   const [selectedClient, setSelectedClient] = useState(ANONYMOUS_CLIENT)
+  const [clientQuery, setClientQuery] = useState('')
+  const [clientResults, setClientResults] = useState<ClientRecord[]>([])
+  const [clientSearchLoading, setClientSearchLoading] = useState(false)
+  const [createClientOpen, setCreateClientOpen] = useState(false)
   const [selectedService, setSelectedService] = useState('')
   const [slots, setSlots] = useState<Slot[]>([])
   const [selectedSlot, setSelectedSlot] = useState('')
   const [loadingSlots, setLoadingSlots] = useState(false)
   const [saving, setSaving] = useState(false)
+
+  // Client quick-view
+  const [quickViewClientId, setQuickViewClientId] = useState<string | null>(null)
+  const [quickViewOpen, setQuickViewOpen] = useState(false)
+
+  function openClientQuickView(clientId: string) {
+    setQuickViewClientId(clientId)
+    setQuickViewOpen(true)
+  }
 
   // Cancel dialog
   const [cancelTarget, setCancelTarget] = useState<Appointment | null>(null)
@@ -229,6 +252,16 @@ export default function AgendaPage() {
     () => (barberFilter === ALL_BARBERS ? appointments : appointments.filter((a) => a.barberId === barberFilter)),
     [appointments, barberFilter],
   )
+  const sortedAppointments = useMemo(() => {
+    return [...visibleAppointments].sort((a, b) => {
+      if (a.barberId !== b.barberId) {
+        const nameA = barberById.get(a.barberId)?.fullName ?? ''
+        const nameB = barberById.get(b.barberId)?.fullName ?? ''
+        return nameA.localeCompare(nameB)
+      }
+      return a.startAt.localeCompare(b.startAt)
+    })
+  }, [visibleAppointments, barberById])
   const chargeSubtotal = chargeServices.length > 0
     ? calculateSaleTotals(chargeServices.map((item) => ({ quantity: 1, unitPrice: item.priceAtTime })), '0.00').subtotal
     : null
@@ -240,12 +273,10 @@ export default function AgendaPage() {
   }
 
   async function openNew() {
-    const [cr, sr, contextResponse] = await Promise.all([
-      fetch('/api/clients').then(r => r.json()),
+    const [sr, contextResponse] = await Promise.all([
       fetch('/api/services').then(r => r.json()),
       fetch('/api/agenda-context').then(r => r.json() as Promise<AgendaContext>),
     ])
-    setClients(cr.data ?? [])
     setServices(sr)
     setBranches(contextResponse.branches ?? [])
     setBarbers(contextResponse.barbers ?? [])
@@ -257,9 +288,17 @@ export default function AgendaPage() {
     setBranchId(defaultBranch)
     setBarberId(defaultBarber)
     setSelectedClient(ANONYMOUS_CLIENT)
+    setClientQuery('')
+    setClientResults([])
     setNewOpen(true)
     setSlots([])
     setSelectedSlot('')
+  }
+
+  function handleClientCreated(client: ClientRecord) {
+    setClientResults((prev) => [client, ...prev.filter((c) => c.id !== client.id)])
+    setSelectedClient(client.id)
+    setCreateClientOpen(false)
   }
 
   async function openCharge(appointment: Appointment) {
@@ -352,6 +391,19 @@ export default function AgendaPage() {
 
   // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
   useEffect(() => { if (newOpen) void fetchSlots() }, [barberId, branchId, selectedService, date])
+
+  useEffect(() => {
+    if (!newOpen) return
+    const timer = setTimeout(() => {
+      setClientSearchLoading(true)
+      fetch(`/api/clients?q=${encodeURIComponent(clientQuery)}`)
+        .then((res) => res.json())
+        .then((json) => setClientResults(json.data ?? []))
+        .catch(() => toast.error('Error al buscar clientes'))
+        .finally(() => setClientSearchLoading(false))
+    }, 250)
+    return () => clearTimeout(timer)
+  }, [newOpen, clientQuery])
 
   async function handleCreate() {
     if (!selectedSlot || !selectedService || !barberId || !branchId) {
@@ -540,22 +592,36 @@ export default function AgendaPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {visibleAppointments.length === 0 ? (
+              {sortedAppointments.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                     Sin turnos para este día
                   </TableCell>
                 </TableRow>
               ) : (
-                visibleAppointments.map((a) => (
-                  <TableRow key={a.id}>
+                sortedAppointments.map((a) => (
+                  <TableRow
+                    key={a.id}
+                    className="border-l-4"
+                    style={{ borderLeftColor: barberById.get(a.barberId)?.displayColor ?? 'transparent' }}
+                  >
                     <TableCell className="font-mono text-sm">
                       {new Date(a.startAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' })}
                       {' — '}
                       {new Date(a.endAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' })}
                     </TableCell>
                     <TableCell>
-                      {[a.clientFirstName, a.clientLastName].filter(Boolean).join(' ') || 'Walk-in'}
+                      {a.clientId ? (
+                        <button
+                          type="button"
+                          className="text-left underline-offset-2 hover:underline"
+                          onClick={() => openClientQuickView(a.clientId as string)}
+                        >
+                          {[a.clientFirstName, a.clientLastName].filter(Boolean).join(' ') || 'Cliente'}
+                        </button>
+                      ) : (
+                        'Walk-in'
+                      )}
                     </TableCell>
                     <TableCell><BarberTag barber={barberById.get(a.barberId)} /></TableCell>
                     <TableCell>
@@ -653,7 +719,7 @@ export default function AgendaPage() {
 
       {!loading ? (
         <div className="flex flex-col gap-3 md:hidden">
-          {visibleAppointments.length === 0 ? (
+          {sortedAppointments.length === 0 ? (
             <Empty className="border bg-card">
               <EmptyHeader>
                 <EmptyMedia variant="icon"><CalendarClock /></EmptyMedia>
@@ -662,7 +728,7 @@ export default function AgendaPage() {
               </EmptyHeader>
             </Empty>
           ) : (
-            visibleAppointments.map((appointment) => (
+            sortedAppointments.map((appointment) => (
               <AppointmentMobileCard
                 key={appointment.id}
                 appointment={appointment}
@@ -674,6 +740,7 @@ export default function AgendaPage() {
                   setCancelReason('')
                 }}
                 onCharge={(target) => void openCharge(target)}
+                onClientClick={openClientQuickView}
               />
             ))
           )}
@@ -766,32 +833,53 @@ export default function AgendaPage() {
               </Select>
             </div>
             <div className="space-y-1">
-              <Label>Cliente (opcional)</Label>
-              <Select
+              <div className="flex items-center justify-between">
+                <Label>Cliente (opcional)</Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-auto px-1.5 py-1 text-xs"
+                  onClick={() => setCreateClientOpen(true)}
+                >
+                  <UserPlus data-icon="inline-start" className="size-3.5" />
+                  Crear cliente
+                </Button>
+              </div>
+              <Combobox
                 items={[
                   { value: ANONYMOUS_CLIENT, label: 'Walk-in (sin cliente)' },
-                  ...clients.map((client) => ({
+                  ...clientResults.map((client) => ({
                     value: client.id,
                     label: [client.firstName, client.lastName].filter(Boolean).join(' ') || client.whatsappRaw || client.id,
                   })),
                 ]}
+                filter={null}
                 value={selectedClient}
-                onValueChange={(v) => setSelectedClient(v ?? ANONYMOUS_CLIENT)}
+                onValueChange={(value) => setSelectedClient((value as string | null) ?? ANONYMOUS_CLIENT)}
+                onInputValueChange={(value) => setClientQuery(value)}
               >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Walk-in / anónimo" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    <SelectItem value={ANONYMOUS_CLIENT}>Walk-in (sin cliente)</SelectItem>
-                    {clients.map(c => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {[c.firstName, c.lastName].filter(Boolean).join(' ') || c.whatsappRaw || c.id}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
+                <ComboboxInputGroup>
+                  <ComboboxInput placeholder="Buscar por nombre o teléfono…" />
+                  <ComboboxTrailingIcon loading={clientSearchLoading} />
+                </ComboboxInputGroup>
+                <ComboboxPopup>
+                  <ComboboxItem value={ANONYMOUS_CLIENT}>Walk-in (sin cliente)</ComboboxItem>
+                  {clientResults.map((c) => (
+                    <ComboboxItem key={c.id} value={c.id}>
+                      <span className="font-medium">
+                        {[c.firstName, c.lastName].filter(Boolean).join(' ') || c.whatsappRaw || 'Sin nombre'}
+                      </span>
+                      {c.whatsappRaw ? (
+                        <span className="text-xs text-muted-foreground">{c.whatsappRaw}</span>
+                      ) : null}
+                    </ComboboxItem>
+                  ))}
+                  <ComboboxEmpty>
+                    {clientQuery.trim() ? 'Sin resultados' : 'Escribí para buscar un cliente'}
+                  </ComboboxEmpty>
+                </ComboboxPopup>
+              </Combobox>
             </div>
             <div className="space-y-1">
               <Label>Horario disponible</Label>
@@ -1005,6 +1093,18 @@ export default function AgendaPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ClientFormDialog
+        open={createClientOpen}
+        onOpenChange={setCreateClientOpen}
+        onSaved={handleClientCreated}
+      />
+
+      <ClientQuickViewSheet
+        clientId={quickViewClientId}
+        open={quickViewOpen}
+        onOpenChange={setQuickViewOpen}
+      />
     </div>
   )
 }
@@ -1039,6 +1139,7 @@ function AppointmentMobileCard({
   onReschedule,
   onCancel,
   onCharge,
+  onClientClick,
 }: {
   appointment: Appointment
   barber: Barber | undefined
@@ -1046,6 +1147,7 @@ function AppointmentMobileCard({
   onReschedule: (appointment: Appointment) => Promise<void>
   onCancel: (appointment: Appointment) => void
   onCharge: (appointment: Appointment) => void
+  onClientClick: (clientId: string) => void
 }) {
   const start = new Date(appointment.startAt).toLocaleTimeString('es-AR', {
     hour: '2-digit',
@@ -1062,11 +1164,21 @@ function AppointmentMobileCard({
     .join(' ') || 'Walk-in'
 
   return (
-    <Card elevated>
+    <Card elevated className="border-l-4" style={{ borderLeftColor: barber?.displayColor ?? 'transparent' }}>
       <CardContent className="flex flex-col gap-4 py-1">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="font-heading text-xl font-semibold">{clientName}</p>
+            {appointment.clientId ? (
+              <button
+                type="button"
+                className="text-left font-heading text-xl font-semibold underline-offset-2 hover:underline"
+                onClick={() => onClientClick(appointment.clientId as string)}
+              >
+                {clientName}
+              </button>
+            ) : (
+              <p className="font-heading text-xl font-semibold">{clientName}</p>
+            )}
             <p className="mt-1 font-mono text-sm font-semibold tabular-nums text-muted-foreground">
               {start} - {end}
             </p>
