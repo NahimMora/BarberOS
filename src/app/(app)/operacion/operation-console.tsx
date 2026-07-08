@@ -4,14 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import {
   CalendarClock,
-  Copy,
   FileUp,
   MapPin,
   Plus,
   Scissors,
   ShieldCheck,
   UserRoundCog,
-  X,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -53,7 +51,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { Skeleton } from '@/components/ui/skeleton'
-import { summarizeSchedule } from '@/lib/staff/schedule-summary'
+import { rangesOverlap } from '@/lib/staff/schedule-summary'
 
 type Branch = {
   id: string
@@ -125,9 +123,90 @@ type BarberProfile = {
   }[]
 }
 
-const DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
 const DAY_SHORT = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
 const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0]
+
+type ScheduleBlock = {
+  key: string
+  branchId: string
+  branchName: string
+  weekdays: number[]
+  dayLabel: string
+  ranges: { startTime: string; endTime: string }[]
+  rangeLabel: string
+  scheduleIds: string[]
+}
+
+/**
+ * Collapses a barber's schedule rows into readable blocks, grouping
+ * consecutive days (Lun→Dom) that share the exact same ranges, e.g.
+ * "Lun–Vie 09:00–13:00, 14:00–19:00" — mirrors summarizeSchedule's
+ * grouping but keeps the source row ids so a block can be edited/deleted.
+ */
+function buildBarberBlocks(schedules: Schedule[], branches: Branch[]): ScheduleBlock[] {
+  const branchName = (id: string) => branches.find((branch) => branch.id === id)?.name ?? 'Sucursal'
+  const byBranch = new Map<string, Schedule[]>()
+  for (const schedule of schedules) {
+    const list = byBranch.get(schedule.branchId) ?? []
+    list.push(schedule)
+    byBranch.set(schedule.branchId, list)
+  }
+
+  const blocks: ScheduleBlock[] = []
+  for (const [branchId, branchSchedules] of byBranch) {
+    const byWeekday = new Map<number, Schedule[]>()
+    for (const schedule of branchSchedules) {
+      const list = byWeekday.get(schedule.weekday) ?? []
+      list.push(schedule)
+      byWeekday.set(schedule.weekday, list)
+    }
+
+    const labelByWeekday = new Map<number, string>()
+    const idsByWeekday = new Map<number, string[]>()
+    const rangesByWeekday = new Map<number, { startTime: string; endTime: string }[]>()
+    for (const [weekday, ranges] of byWeekday) {
+      const sorted = [...ranges].sort((a, b) => a.startTime.localeCompare(b.startTime))
+      labelByWeekday.set(
+        weekday,
+        sorted.map((range) => `${range.startTime.slice(0, 5)}–${range.endTime.slice(0, 5)}`).join(', '),
+      )
+      idsByWeekday.set(weekday, sorted.map((range) => range.id))
+      rangesByWeekday.set(
+        weekday,
+        sorted.map((range) => ({ startTime: range.startTime.slice(0, 5), endTime: range.endTime.slice(0, 5) })),
+      )
+    }
+
+    let index = 0
+    while (index < WEEK_ORDER.length) {
+      const weekday = WEEK_ORDER[index]
+      const label = labelByWeekday.get(weekday)
+      if (!label) {
+        index += 1
+        continue
+      }
+      let end = index
+      while (end + 1 < WEEK_ORDER.length && labelByWeekday.get(WEEK_ORDER[end + 1]) === label) {
+        end += 1
+      }
+      const days = WEEK_ORDER.slice(index, end + 1)
+      const startDay = DAY_SHORT[weekday]
+      const endDay = DAY_SHORT[WEEK_ORDER[end]]
+      blocks.push({
+        key: `${branchId}-${weekday}-${end}`,
+        branchId,
+        branchName: branchName(branchId),
+        weekdays: days,
+        dayLabel: days.length === 1 ? startDay : `${startDay}–${endDay}`,
+        ranges: rangesByWeekday.get(weekday) ?? [],
+        rangeLabel: label,
+        scheduleIds: days.flatMap((day) => idsByWeekday.get(day) ?? []),
+      })
+      index = end + 1
+    }
+  }
+  return blocks
+}
 
 type DayKey = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'
 type DayHours = { open: string; close: string } | null
@@ -225,10 +304,12 @@ export function OperationConsole() {
 
   const [availabilityBarberId, setAvailabilityBarberId] = useState('')
   const [availabilityBranchId, setAvailabilityBranchId] = useState('')
-  const [addRangeDay, setAddRangeDay] = useState<number | null>(null)
-  const [addRangeTimes, setAddRangeTimes] = useState({ startTime: '09:00', endTime: '18:00' })
-  const [copySource, setCopySource] = useState<{ weekday: number; startTime: string; endTime: string } | null>(null)
-  const [copyTargetDays, setCopyTargetDays] = useState<number[]>([])
+  const [blockDays, setBlockDays] = useState<number[]>([])
+  const [blockStart, setBlockStart] = useState('09:00')
+  const [blockEnd, setBlockEnd] = useState('18:00')
+  const [blockError, setBlockError] = useState<string | null>(null)
+  const [blockSaving, setBlockSaving] = useState(false)
+  const [editingBlockKey, setEditingBlockKey] = useState<string | null>(null)
 
   const barbers = useMemo(
     () => staff.filter((member) => member.role === 'barber' && member.status === 'active'),
@@ -241,8 +322,18 @@ export function OperationConsole() {
   )
 
   const selectedBarberId = availabilityBarberId || barbers[0]?.id || ''
+  const selectedBarber = useMemo(
+    () => barbers.find((barber) => barber.id === selectedBarberId),
+    [barbers, selectedBarberId],
+  )
+  const barberBranchOptions = useMemo(() => {
+    const ids = new Set((selectedBarber?.branches ?? []).map((branch) => branch.id))
+    return branches.filter((branch) => ids.has(branch.id))
+  }, [selectedBarber, branches])
   const selectedBranchId =
-    availabilityBranchId || branches.find((branch) => branch.active)?.id || branches[0]?.id || ''
+    availabilityBranchId && barberBranchOptions.some((branch) => branch.id === availabilityBranchId)
+      ? availabilityBranchId
+      : barberBranchOptions.find((branch) => branch.active)?.id ?? barberBranchOptions[0]?.id ?? ''
 
   const availabilitySchedules = useMemo(
     () =>
@@ -255,29 +346,13 @@ export function OperationConsole() {
     [schedules, selectedBarberId, selectedBranchId],
   )
 
-  const schedulesByWeekday = useMemo(() => {
-    const map = new Map<number, Schedule[]>()
-    for (const schedule of availabilitySchedules) {
-      const list = map.get(schedule.weekday) ?? []
-      list.push(schedule)
-      map.set(schedule.weekday, list)
-    }
-    for (const list of map.values()) {
-      list.sort((a, b) => a.startTime.localeCompare(b.startTime))
-    }
-    return map
-  }, [availabilitySchedules])
-
-  const scheduleSummary = useMemo(
-    () =>
-      summarizeSchedule(
-        availabilitySchedules.map((schedule) => ({
-          weekday: schedule.weekday,
-          startTime: schedule.startTime.slice(0, 5),
-          endTime: schedule.endTime.slice(0, 5),
-        })),
-      ),
-    [availabilitySchedules],
+  const barberAllSchedules = useMemo(
+    () => schedules.filter((schedule) => schedule.active && schedule.barberId === selectedBarberId),
+    [schedules, selectedBarberId],
+  )
+  const scheduleBlocks = useMemo(
+    () => buildBarberBlocks(barberAllSchedules, branches),
+    [barberAllSchedules, branches],
   )
 
   const visibleTimeOff = useMemo(
@@ -518,63 +593,124 @@ export function OperationConsole() {
     }
   }
 
-  function openAddRange(weekday: number) {
-    setAddRangeDay(weekday)
-    setAddRangeTimes({ startTime: '09:00', endTime: '18:00' })
+  function resetBlockComposer() {
+    setBlockDays([])
+    setBlockStart('09:00')
+    setBlockEnd('18:00')
+    setBlockError(null)
+    setEditingBlockKey(null)
   }
 
-  async function submitAddRange() {
-    if (addRangeDay === null) return
+  function toggleBlockDay(weekday: number) {
+    setBlockDays((current) =>
+      current.includes(weekday) ? current.filter((day) => day !== weekday) : [...current, weekday],
+    )
+    setBlockError(null)
+  }
+
+  function startEditBlock(block: ScheduleBlock) {
+    if (block.ranges.length !== 1) return
+    setBlockDays(block.weekdays)
+    setBlockStart(block.ranges[0].startTime)
+    setBlockEnd(block.ranges[0].endTime)
+    setEditingBlockKey(block.key)
+    setBlockError(null)
+  }
+
+  async function deleteBlock(block: ScheduleBlock) {
     try {
-      await mutate('/api/barber-schedules', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          barberId: selectedBarberId,
-          branchId: selectedBranchId,
-          weekday: addRangeDay,
-          startTime: addRangeTimes.startTime,
-          endTime: addRangeTimes.endTime,
-        }),
-      }, 'Horario agregado')
-      setAddRangeDay(null)
+      for (const id of block.scheduleIds) {
+        await request(`/api/barber-schedules/${id}`, { method: 'DELETE' })
+      }
+      toast.success('Horario quitado')
+      await loadData()
+      if (editingBlockKey === block.key) resetBlockComposer()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Error')
     }
   }
 
-  function openCopyDialog(range: Schedule) {
-    setCopySource({ weekday: range.weekday, startTime: range.startTime.slice(0, 5), endTime: range.endTime.slice(0, 5) })
-    setCopyTargetDays([])
-  }
+  async function submitBlock() {
+    setBlockError(null)
+    if (blockDays.length === 0) {
+      setBlockError('Elegí al menos un día.')
+      return
+    }
+    if (blockStart >= blockEnd) {
+      setBlockError('El horario de inicio debe ser anterior al de cierre.')
+      return
+    }
 
-  async function copyScheduleToDays() {
-    if (!copySource) return
-    let succeeded = 0
-    const failedDays: string[] = []
-    for (const weekday of copyTargetDays) {
-      try {
-        await request('/api/barber-schedules', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            barberId: selectedBarberId,
-            branchId: selectedBranchId,
-            weekday,
-            startTime: copySource.startTime,
-            endTime: copySource.endTime,
-          }),
-        })
-        succeeded += 1
-      } catch {
-        failedDays.push(DAY_SHORT[weekday])
+    const editingIds = new Set(
+      editingBlockKey ? scheduleBlocks.find((block) => block.key === editingBlockKey)?.scheduleIds ?? [] : [],
+    )
+    const relevant = availabilitySchedules.filter((schedule) => !editingIds.has(schedule.id))
+    for (const weekday of blockDays) {
+      const sameDay = relevant.filter((schedule) => schedule.weekday === weekday)
+      const duplicate = sameDay.find(
+        (schedule) => schedule.startTime.slice(0, 5) === blockStart && schedule.endTime.slice(0, 5) === blockEnd,
+      )
+      if (duplicate) {
+        setBlockError('Ya existe un horario igual para estos días.')
+        return
+      }
+      const overlapping = sameDay.find((schedule) =>
+        rangesOverlap(
+          { startTime: blockStart, endTime: blockEnd },
+          { startTime: schedule.startTime.slice(0, 5), endTime: schedule.endTime.slice(0, 5) },
+        ),
+      )
+      if (overlapping) {
+        const branchLabel = branches.find((branch) => branch.id === selectedBranchId)?.name ?? 'esta sucursal'
+        setBlockError(
+          `Este horario se superpone con ${DAY_SHORT[weekday]} ${overlapping.startTime.slice(0, 5)}–${overlapping.endTime.slice(0, 5)} en ${branchLabel}.`,
+        )
+        return
       }
     }
-    await loadData()
-    if (succeeded > 0) toast.success(`Horario copiado a ${succeeded} día${succeeded === 1 ? '' : 's'}`)
-    if (failedDays.length > 0) toast.error(`No se pudo copiar a: ${failedDays.join(', ')}`)
-    setCopySource(null)
-    setCopyTargetDays([])
+
+    setBlockSaving(true)
+    try {
+      if (editingBlockKey) {
+        const block = scheduleBlocks.find((current) => current.key === editingBlockKey)
+        if (block) {
+          for (const id of block.scheduleIds) {
+            await request(`/api/barber-schedules/${id}`, { method: 'DELETE' })
+          }
+        }
+      }
+      let succeeded = 0
+      const failedDays: string[] = []
+      for (const weekday of blockDays) {
+        try {
+          await request('/api/barber-schedules', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              barberId: selectedBarberId,
+              branchId: selectedBranchId,
+              weekday,
+              startTime: blockStart,
+              endTime: blockEnd,
+            }),
+          })
+          succeeded += 1
+        } catch {
+          failedDays.push(DAY_SHORT[weekday])
+        }
+      }
+      await loadData()
+      if (succeeded > 0) {
+        toast.success(editingBlockKey ? 'Horario actualizado' : `Horario aplicado a ${succeeded} día${succeeded === 1 ? '' : 's'}`)
+      }
+      if (failedDays.length > 0) {
+        setBlockError(`No se pudo aplicar a: ${failedDays.join(', ')}.`)
+      } else {
+        resetBlockComposer()
+      }
+    } finally {
+      setBlockSaving(false)
+    }
   }
 
   async function createTimeOff() {
@@ -768,7 +904,7 @@ export function OperationConsole() {
             <Card>
               <CardHeader>
                 <CardTitle>Horario recurrente</CardTitle>
-                <CardDescription>Elegí un barbero y armá su semana día por día.</CardDescription>
+                <CardDescription>Elegí los días y el horario, y aplicalo de una vez.</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-col gap-4">
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -776,60 +912,96 @@ export function OperationConsole() {
                     label="Barbero"
                     value={selectedBarberId}
                     items={barbers.map((barber) => ({ value: barber.id, label: barber.fullName }))}
-                    onChange={setAvailabilityBarberId}
+                    onChange={(value) => { setAvailabilityBarberId(value); setAvailabilityBranchId(''); resetBlockComposer() }}
                   />
                   <SelectField
                     label="Sucursal"
                     value={selectedBranchId}
-                    items={branches.filter((branch) => branch.active).map((branch) => ({ value: branch.id, label: branch.name }))}
-                    onChange={setAvailabilityBranchId}
+                    items={barberBranchOptions.map((branch) => ({ value: branch.id, label: branch.name }))}
+                    onChange={(value) => { setAvailabilityBranchId(value); resetBlockComposer() }}
                   />
                 </div>
 
                 {barbers.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No hay barberos activos todavía.</p>
+                ) : barberBranchOptions.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Este barbero no tiene sucursales asignadas.</p>
                 ) : (
                   <>
-                    <p className="text-sm text-muted-foreground">
-                      {scheduleSummary.length > 0
-                        ? `Resumen: ${scheduleSummary.join(' · ')}`
-                        : 'Sin horario cargado para esta combinación de barbero y sucursal.'}
-                    </p>
+                    <div className="flex flex-col gap-3 rounded-xl border border-border/70 bg-muted/30 p-3">
+                      <div className="flex flex-wrap gap-1.5">
+                        {WEEK_ORDER.map((weekday) => (
+                          <Button
+                            key={weekday}
+                            type="button"
+                            variant={blockDays.includes(weekday) ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => toggleBlockDay(weekday)}
+                          >
+                            {DAY_SHORT[weekday]}
+                          </Button>
+                        ))}
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <Field label="Desde">
+                          <Input
+                            type="time"
+                            value={blockStart}
+                            onChange={(event) => { setBlockStart(event.target.value); setBlockError(null) }}
+                          />
+                        </Field>
+                        <Field label="Hasta">
+                          <Input
+                            type="time"
+                            value={blockEnd}
+                            onChange={(event) => { setBlockEnd(event.target.value); setBlockError(null) }}
+                          />
+                        </Field>
+                      </div>
+                      {blockError ? <p className="text-sm text-destructive">{blockError}</p> : null}
+                      <div className="flex flex-wrap gap-2">
+                        <Button size="sm" disabled={blockSaving} onClick={() => void submitBlock()}>
+                          <Plus data-icon="inline-start" />
+                          {blockSaving ? 'Guardando…' : editingBlockKey ? 'Guardar cambios' : 'Aplicar a días seleccionados'}
+                        </Button>
+                        {editingBlockKey ? (
+                          <Button size="sm" variant="ghost" onClick={resetBlockComposer}>Cancelar edición</Button>
+                        ) : null}
+                      </div>
+                    </div>
 
                     <div className="flex flex-col gap-2">
-                      {WEEK_ORDER.map((weekday) => (
-                        <div key={weekday} className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-start sm:justify-between">
-                          <div className="w-24 shrink-0 pt-1 text-sm font-medium">{DAY_NAMES[weekday]}</div>
-                          <div className="flex flex-1 flex-wrap items-center gap-2">
-                            {(schedulesByWeekday.get(weekday) ?? []).map((range) => (
-                              <div key={range.id} className="flex items-center gap-1.5 rounded-full border bg-muted/40 py-1 pr-1.5 pl-3 text-xs">
-                                <span className="font-mono tabular-nums">{range.startTime.slice(0, 5)}–{range.endTime.slice(0, 5)}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => openCopyDialog(range)}
-                                  aria-label={`Copiar horario de ${DAY_NAMES[weekday]} a otros días`}
-                                  title="Copiar a otros días"
-                                  className="rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-                                >
-                                  <Copy className="size-3" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => void mutate(`/api/barber-schedules/${range.id}`, { method: 'DELETE' }, 'Horario quitado')}
-                                  aria-label={`Quitar horario de ${DAY_NAMES[weekday]}`}
-                                  title="Quitar"
-                                  className="rounded-full p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                                >
-                                  <X className="size-3" />
-                                </button>
-                              </div>
-                            ))}
-                            <Button variant="outline" size="xs" onClick={() => openAddRange(weekday)}>
-                              <Plus data-icon="inline-start" />Agregar rango
-                            </Button>
+                      {scheduleBlocks.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">Sin horario cargado para este barbero.</p>
+                      ) : (
+                        scheduleBlocks.map((block) => (
+                          <div
+                            key={block.key}
+                            className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3"
+                          >
+                            <p className="text-sm">
+                              <span className="font-medium">{block.dayLabel}</span>
+                              {' · '}
+                              <span className="font-mono tabular-nums">{block.rangeLabel}</span>
+                              {' · '}
+                              <span className="text-muted-foreground">{block.branchName}</span>
+                            </p>
+                            <div className="flex gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={block.ranges.length !== 1}
+                                onClick={() => startEditBlock(block)}
+                              >
+                                Editar
+                              </Button>
+                              <Button variant="ghost" size="sm" onClick={() => void deleteBlock(block)}>
+                                Quitar
+                              </Button>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        ))
+                      )}
                     </div>
                   </>
                 )}
@@ -872,49 +1044,6 @@ export function OperationConsole() {
         onSave={() => void saveStaffProfile()}
       />
       <ServiceDialog editing={Boolean(editingServiceId)} open={serviceOpen} onOpenChange={setServiceOpen} value={serviceForm} onChange={setServiceForm} onSave={() => void saveService()} />
-
-      <Dialog open={addRangeDay !== null} onOpenChange={(open) => !open && setAddRangeDay(null)}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Agregar rango · {addRangeDay !== null ? DAY_NAMES[addRangeDay] : ''}</DialogTitle></DialogHeader>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Desde"><Input type="time" value={addRangeTimes.startTime} onChange={(event) => setAddRangeTimes({ ...addRangeTimes, startTime: event.target.value })} /></Field>
-            <Field label="Hasta"><Input type="time" value={addRangeTimes.endTime} onChange={(event) => setAddRangeTimes({ ...addRangeTimes, endTime: event.target.value })} /></Field>
-          </div>
-          <DialogFooter><Button variant="outline" onClick={() => setAddRangeDay(null)}>Cancelar</Button><Button onClick={() => void submitAddRange()}>Agregar</Button></DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={copySource !== null} onOpenChange={(open) => !open && setCopySource(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              Copiar {copySource ? `${copySource.startTime}–${copySource.endTime}` : ''} a otros días
-            </DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col gap-2">
-            {copySource && WEEK_ORDER.filter((weekday) => weekday !== copySource.weekday).map((weekday) => {
-              const checked = copyTargetDays.includes(weekday)
-              return (
-                <label key={weekday} className="flex items-center gap-2 rounded-lg border p-2.5 text-sm">
-                  <Checkbox
-                    checked={checked}
-                    onCheckedChange={(next) =>
-                      setCopyTargetDays((current) =>
-                        next ? [...current, weekday] : current.filter((day) => day !== weekday),
-                      )
-                    }
-                  />
-                  {DAY_NAMES[weekday]}
-                </label>
-              )
-            })}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCopySource(null)}>Cancelar</Button>
-            <Button disabled={copyTargetDays.length === 0} onClick={() => void copyScheduleToDays()}>Copiar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={Boolean(disableTarget)} onOpenChange={(open) => !open && setDisableTarget(null)}>
         <DialogContent>
