@@ -58,6 +58,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { calculateSaleTotals } from '@/lib/money/money'
 import { formatArs } from '@/lib/money/display'
+import { VoidSalePanel } from './void-sale-panel'
 
 type Branch = { id: string; name: string }
 type Barber = { id: string; fullName: string; branchId: string }
@@ -477,7 +478,7 @@ export function CashConsole() {
         )}
       />
 
-      <Card className="paper-surface">
+      <Card elevated>
         <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <Field className="w-full sm:max-w-sm">
             <FieldLabel>Sucursal operativa</FieldLabel>
@@ -513,7 +514,7 @@ export function CashConsole() {
       </Card>
 
       {!cash?.openSession ? (
-        <Card className="border-primary/20 bg-primary text-primary-foreground">
+        <Card elevated className="border-primary/20 bg-primary text-primary-foreground">
           <CardHeader>
             <Badge className="w-fit bg-primary-foreground/12 text-primary-foreground">Inicio de jornada</Badge>
             <CardTitle className="text-3xl">Abrí la caja antes del primer cobro.</CardTitle>
@@ -553,7 +554,7 @@ export function CashConsole() {
           </section>
 
           <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
-            <Card className="paper-surface">
+            <Card elevated>
               <CardHeader>
                 <Badge variant="secondary" className="w-fit">Cobro manual</Badge>
                 <CardTitle className="text-2xl">Registrar venta</CardTitle>
@@ -750,7 +751,7 @@ export function CashConsole() {
                       <p className="text-xs font-bold uppercase tracking-[0.16em] text-primary-foreground/60">
                         Total a cobrar
                       </p>
-                      <p className="mt-1 font-heading text-3xl font-semibold">
+                      <p className="mt-1 font-mono text-3xl font-semibold tabular-nums">
                         {appointmentId === MANUAL_SALE
                           ? formatArs(saleTotals?.total)
                           : 'Precio del turno'}
@@ -772,7 +773,7 @@ export function CashConsole() {
             </Card>
 
             <div className="flex flex-col gap-5">
-              <Card>
+              <Card elevated>
                 <CardHeader>
                   <CardTitle>Control de efectivo</CardTitle>
                   <CardDescription>
@@ -784,7 +785,7 @@ export function CashConsole() {
                     <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">
                       Esperado en billetes
                     </p>
-                    <p className="mt-2 font-heading text-4xl font-semibold">
+                    <p className="mt-2 font-mono text-4xl font-semibold tabular-nums">
                       {formatArs(cash.liveSnapshot?.expectedCash)}
                     </p>
                   </div>
@@ -825,7 +826,7 @@ export function CashConsole() {
                               {paymentLabels[movement.paymentMethod]} · {new Date(movement.createdAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
                             </p>
                           </div>
-                          <p className={`text-sm font-bold ${negative ? 'text-destructive' : ''}`}>
+                          <p className={`font-mono text-sm font-bold tabular-nums ${negative ? 'text-destructive' : ''}`}>
                             {negative ? '-' : ''}{formatArs(movement.amount)}
                           </p>
                         </div>
@@ -860,9 +861,9 @@ export function CashConsole() {
                 {cash.recentSessions.map((session) => (
                   <TableRow key={session.id}>
                     <TableCell>{new Date(session.openedAt).toLocaleString('es-AR')}</TableCell>
-                    <TableCell>{formatArs(session.expectedCash)}</TableCell>
-                    <TableCell>{formatArs(session.countedCash)}</TableCell>
-                    <TableCell className={session.cashDifference !== '0.00' ? 'font-bold text-destructive' : 'font-bold text-success'}>
+                    <TableCell className="font-mono tabular-nums">{formatArs(session.expectedCash)}</TableCell>
+                    <TableCell className="font-mono tabular-nums">{formatArs(session.countedCash)}</TableCell>
+                    <TableCell className={`font-mono tabular-nums ${session.cashDifference !== '0.00' ? 'font-bold text-destructive' : 'font-bold text-success'}`}>
                       {formatArs(session.cashDifference)}
                     </TableCell>
                     {context.user.role === 'admin' ? (
@@ -882,6 +883,10 @@ export function CashConsole() {
             </Table>
           </CardContent>
         </Card>
+      ) : null}
+
+      {context.user.role === 'admin' ? (
+        <VoidSalePanel branches={context.branches} />
       ) : null}
 
       <Dialog open={movementOpen} onOpenChange={setMovementOpen}>
@@ -958,11 +963,11 @@ export function CashConsole() {
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-xl bg-secondary p-4">
               <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Esperado</p>
-              <p className="mt-1 text-xl font-bold">{formatArs(cash?.liveSnapshot?.expectedCash)}</p>
+              <p className="mt-1 font-mono text-xl font-bold tabular-nums">{formatArs(cash?.liveSnapshot?.expectedCash)}</p>
             </div>
             <div className="rounded-xl border p-4">
               <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Total operativo</p>
-              <p className="mt-1 text-xl font-bold">{formatArs(cash?.liveSnapshot?.expectedTotal)}</p>
+              <p className="mt-1 font-mono text-xl font-bold tabular-nums">{formatArs(cash?.liveSnapshot?.expectedTotal)}</p>
             </div>
           </div>
           <Field>
@@ -1060,7 +1065,7 @@ function MoneyStat({
           <p className={`text-xs font-bold uppercase tracking-[0.12em] ${accent ? 'text-primary-foreground/60' : 'text-muted-foreground'}`}>
             {label}
           </p>
-          <p className="mt-2 font-heading text-2xl font-semibold">{formatArs(value)}</p>
+          <p className="mt-2 font-mono text-2xl font-semibold tabular-nums">{formatArs(value)}</p>
         </div>
         <Icon className={`size-5 ${accent ? 'text-primary-foreground/70' : 'text-primary'}`} />
       </CardContent>

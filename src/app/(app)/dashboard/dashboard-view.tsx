@@ -145,7 +145,7 @@ function OperationMetrics({
   monthLabel: string
 }) {
   return (
-    <section className="paper-surface overflow-hidden rounded-3xl border border-border/70 shadow-sm">
+    <section className="overflow-hidden rounded-3xl border border-border">
       <div className="grid divide-y divide-border/70 sm:grid-cols-2 sm:divide-x sm:divide-y-0 xl:grid-cols-4">
         <Metric
           label="Facturación de hoy"
@@ -197,7 +197,7 @@ function BarberMetrics({
   if (!metrics) return null
 
   return (
-    <section className="paper-surface overflow-hidden rounded-3xl border border-border/70 shadow-sm">
+    <section className="overflow-hidden rounded-3xl border border-border">
       <div className="border-b border-border/70 px-6 py-4">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">
           Resultado · {monthLabel}

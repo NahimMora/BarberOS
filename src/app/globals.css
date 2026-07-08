@@ -7,9 +7,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-manrope);
+  --font-sans: var(--font-plus-jakarta-sans);
   --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-newsreader);
+  --font-heading: var(--font-plus-jakarta-sans);
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
   --color-warning: var(--warning);
@@ -55,78 +55,80 @@
 }
 
 :root {
-  --background: oklch(0.972 0.012 82);
-  --foreground: oklch(0.225 0.018 57);
-  --card: oklch(0.995 0.006 82);
-  --card-foreground: oklch(0.225 0.018 57);
-  --popover: oklch(0.995 0.006 82);
-  --popover-foreground: oklch(0.225 0.018 57);
+  --background: #f6f1e8;
+  --foreground: #2a2318;
+  --card: #fffcf5;
+  --card-foreground: #2a2318;
+  --popover: #fffcf5;
+  --popover-foreground: #2a2318;
   --primary: oklch(0.335 0.055 157);
-  --primary-foreground: oklch(0.985 0.008 90);
-  --secondary: oklch(0.925 0.025 82);
-  --secondary-foreground: oklch(0.285 0.024 65);
-  --muted: oklch(0.943 0.014 82);
-  --muted-foreground: oklch(0.51 0.024 65);
-  --accent: oklch(0.87 0.075 78);
-  --accent-foreground: oklch(0.27 0.03 62);
-  --destructive: oklch(0.545 0.18 28);
-  --border: oklch(0.865 0.025 78);
-  --input: oklch(0.84 0.026 78);
-  --ring: oklch(0.52 0.085 79);
-  --success: oklch(0.46 0.105 151);
-  --success-foreground: oklch(0.985 0.008 90);
+  --primary-foreground: #fbf8f1;
+  --secondary: #efe6d3;
+  --secondary-foreground: #3a3020;
+  --muted: #efe8d9;
+  --muted-foreground: #6e6153;
+  --accent: oklch(0.84 0.07 78);
+  --accent-foreground: #34290f;
+  --destructive: oklch(0.55 0.18 27);
+  --border: #e6dcc5;
+  --input: #ded0b2;
+  --ring: oklch(0.46 0.07 155);
+  --success: oklch(0.48 0.11 151);
+  --success-foreground: #fbf8f1;
   --warning: oklch(0.71 0.13 75);
-  --warning-foreground: oklch(0.25 0.035 58);
-  --info: oklch(0.52 0.09 240);
-  --info-foreground: oklch(0.985 0.008 90);
+  --warning-foreground: #2a2318;
+  --info: oklch(0.53 0.09 240);
+  --info-foreground: #fbf8f1;
   --chart-1: oklch(0.335 0.055 157);
   --chart-2: oklch(0.67 0.1 78);
   --chart-3: oklch(0.52 0.09 240);
   --chart-4: oklch(0.545 0.18 28);
   --chart-5: oklch(0.54 0.07 315);
-  --radius: 0.75rem;
-  --sidebar: oklch(0.245 0.028 155);
-  --sidebar-foreground: oklch(0.94 0.016 88);
-  --sidebar-primary: oklch(0.865 0.078 78);
-  --sidebar-primary-foreground: oklch(0.235 0.03 62);
-  --sidebar-accent: oklch(0.32 0.035 155);
-  --sidebar-accent-foreground: oklch(0.97 0.01 88);
-  --sidebar-border: oklch(0.38 0.03 155);
-  --sidebar-ring: oklch(0.72 0.08 78);
+  --radius: 1rem;
+  --stripe-red: oklch(0.55 0.19 25);
+  --sidebar: oklch(0.24 0.02 155);
+  --sidebar-foreground: oklch(0.95 0.006 90);
+  --sidebar-primary: oklch(0.86 0.05 80);
+  --sidebar-primary-foreground: oklch(0.24 0.02 65);
+  --sidebar-accent: oklch(0.31 0.025 155);
+  --sidebar-accent-foreground: oklch(0.97 0.004 90);
+  --sidebar-border: oklch(0.38 0.02 155);
+  --sidebar-ring: oklch(0.7 0.05 80);
 }
 
 .dark {
-  --background: oklch(0.18 0.018 65);
-  --foreground: oklch(0.94 0.016 88);
-  --card: oklch(0.225 0.018 65);
-  --card-foreground: oklch(0.94 0.016 88);
-  --popover: oklch(0.225 0.018 65);
-  --popover-foreground: oklch(0.94 0.016 88);
+  --background: oklch(0.19 0.01 75);
+  --foreground: oklch(0.95 0.006 90);
+  --card: oklch(0.235 0.01 75);
+  --card-foreground: oklch(0.95 0.006 90);
+  --popover: oklch(0.235 0.01 75);
+  --popover-foreground: oklch(0.95 0.006 90);
   --primary: oklch(0.77 0.08 78);
   --primary-foreground: oklch(0.21 0.025 62);
-  --secondary: oklch(0.29 0.02 65);
-  --secondary-foreground: oklch(0.94 0.016 88);
-  --muted: oklch(0.27 0.018 65);
-  --muted-foreground: oklch(0.72 0.025 82);
-  --accent: oklch(0.4 0.055 78);
-  --accent-foreground: oklch(0.96 0.012 88);
+  --secondary: oklch(0.29 0.012 75);
+  --secondary-foreground: oklch(0.95 0.006 90);
+  --muted: oklch(0.27 0.01 75);
+  --muted-foreground: oklch(0.72 0.015 80);
+  --accent: oklch(0.4 0.045 78);
+  --accent-foreground: oklch(0.96 0.006 90);
   --destructive: oklch(0.66 0.17 28);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.64 0.08 78);
+  --border: oklch(1 0 0 / 8%);
+  --input: oklch(1 0 0 / 12%);
+  --ring: oklch(0.6 0.06 155);
   --success: oklch(0.62 0.11 151);
-  --success-foreground: oklch(0.18 0.018 65);
+  --success-foreground: oklch(0.19 0.01 75);
   --warning: oklch(0.75 0.13 75);
-  --warning-foreground: oklch(0.18 0.018 65);
+  --warning-foreground: oklch(0.19 0.01 75);
   --info: oklch(0.68 0.09 240);
-  --info-foreground: oklch(0.18 0.018 65);
+  --info-foreground: oklch(0.19 0.01 75);
+  --stripe-red: oklch(0.62 0.17 25);
   --sidebar: oklch(0.16 0.025 155);
-  --sidebar-foreground: oklch(0.94 0.016 88);
+  --sidebar-foreground: oklch(0.95 0.006 90);
   --sidebar-primary: oklch(0.77 0.08 78);
   --sidebar-primary-foreground: oklch(0.21 0.025 62);
   --sidebar-accent: oklch(0.24 0.032 155);
-  --sidebar-accent-foreground: oklch(0.97 0.01 88);
-  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-accent-foreground: oklch(0.97 0.004 90);
+  --sidebar-border: oklch(1 0 0 / 8%);
   --sidebar-ring: oklch(0.64 0.08 78);
 }
 
@@ -141,10 +143,6 @@
 
   body {
     @apply bg-background text-foreground;
-    background-image:
-      radial-gradient(circle at 12% 0%, color-mix(in oklch, var(--accent) 18%, transparent) 0, transparent 28rem),
-      linear-gradient(115deg, transparent 0 48%, color-mix(in oklch, var(--foreground) 2%, transparent) 48% 49%, transparent 49% 100%);
-    background-attachment: fixed;
   }
 
   ::selection {
@@ -153,16 +151,13 @@
 }
 
 @layer utilities {
-  .app-canvas {
-    background-image:
-      linear-gradient(to right, color-mix(in oklch, var(--border) 38%, transparent) 1px, transparent 1px),
-      linear-gradient(to bottom, color-mix(in oklch, var(--border) 28%, transparent) 1px, transparent 1px);
-    background-position: -1px -1px;
-    background-size: 32px 32px;
-  }
-
-  .paper-surface {
-    background: linear-gradient(145deg, color-mix(in oklch, var(--card) 97%, var(--accent)) 0%, var(--card) 72%);
+  .stripe-accent {
+    background-image: repeating-linear-gradient(
+      135deg,
+      var(--stripe-red) 0 6px,
+      var(--card) 6px 12px
+    );
+    background-size: 17px 17px;
   }
 
   .brand-mark-grid {

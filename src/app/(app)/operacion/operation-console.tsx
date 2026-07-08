@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { PageHeader } from '@/components/page-header'
 import {
   Card,
@@ -30,6 +31,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { MoneyInput } from '@/components/ui/money-input'
 import {
   Select,
   SelectContent,
@@ -121,6 +123,31 @@ type BarberProfile = {
 }
 
 const DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
+
+type DayKey = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'
+type DayHours = { open: string; close: string } | null
+type WorkingHours = Record<DayKey, DayHours>
+
+const WORKING_HOURS_DAYS: { key: DayKey; label: string }[] = [
+  { key: 'mon', label: 'Lunes' },
+  { key: 'tue', label: 'Martes' },
+  { key: 'wed', label: 'Miércoles' },
+  { key: 'thu', label: 'Jueves' },
+  { key: 'fri', label: 'Viernes' },
+  { key: 'sat', label: 'Sábado' },
+  { key: 'sun', label: 'Domingo' },
+]
+
+const DEFAULT_WORKING_HOURS: WorkingHours = {
+  mon: { open: '09:00', close: '20:00' },
+  tue: { open: '09:00', close: '20:00' },
+  wed: { open: '09:00', close: '20:00' },
+  thu: { open: '09:00', close: '20:00' },
+  fri: { open: '09:00', close: '20:00' },
+  sat: { open: '09:00', close: '20:00' },
+  sun: null,
+}
+
 const ROLE_LABELS = {
   admin: 'Admin',
   receptionist: 'Recepción',
@@ -143,6 +170,8 @@ export function OperationConsole() {
   const [schedules, setSchedules] = useState<Schedule[]>([])
   const [timeOff, setTimeOff] = useState<TimeOff[]>([])
   const [loading, setLoading] = useState(true)
+  const [hasLoaded, setHasLoaded] = useState(false)
+  const [activeTab, setActiveTab] = useState('branches')
 
   const [branchOpen, setBranchOpen] = useState(false)
   const [staffOpen, setStaffOpen] = useState(false)
@@ -154,13 +183,7 @@ export function OperationConsole() {
   const [editingStaffId, setEditingStaffId] = useState<string | null>(null)
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null)
 
-  const [branchForm, setBranchForm] = useState({
-    name: '',
-    address: '',
-    phone: '',
-    open: '09:00',
-    close: '20:00',
-  })
+  const [branchForm, setBranchForm] = useState(initialBranchForm)
   const [staffForm, setStaffForm] = useState(initialStaffForm)
   const [serviceForm, setServiceForm] = useState({
     name: '',
@@ -207,6 +230,7 @@ export function OperationConsole() {
       setServices(serviceRows)
       setSchedules(scheduleRows)
       setTimeOff(timeOffRows)
+      setHasLoaded(true)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Error inesperado')
     } finally {
@@ -232,15 +256,6 @@ export function OperationConsole() {
   }
 
   async function saveBranch() {
-    const workingHours = {
-      mon: { open: branchForm.open, close: branchForm.close },
-      tue: { open: branchForm.open, close: branchForm.close },
-      wed: { open: branchForm.open, close: branchForm.close },
-      thu: { open: branchForm.open, close: branchForm.close },
-      fri: { open: branchForm.open, close: branchForm.close },
-      sat: { open: branchForm.open, close: branchForm.close },
-      sun: null,
-    }
     try {
       await mutate(editingBranchId ? `/api/branches/${editingBranchId}` : '/api/branches', {
         method: editingBranchId ? 'PATCH' : 'POST',
@@ -250,12 +265,12 @@ export function OperationConsole() {
           address: branchForm.address,
           phone: branchForm.phone,
           timezone: 'America/Argentina/Buenos_Aires',
-          workingHours,
+          workingHours: branchForm.workingHours,
         }),
       }, editingBranchId ? 'Sucursal actualizada' : 'Sucursal creada')
       setBranchOpen(false)
       setEditingBranchId(null)
-      setBranchForm({ name: '', address: '', phone: '', open: '09:00', close: '20:00' })
+      setBranchForm(initialBranchForm)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Error')
     }
@@ -375,14 +390,23 @@ export function OperationConsole() {
   }
 
   function editBranch(branch: Branch) {
-    const monday = branch.workingHours?.mon
+    const hours = branch.workingHours
     setEditingBranchId(branch.id)
     setBranchForm({
       name: branch.name,
       address: branch.address ?? '',
       phone: branch.phone ?? '',
-      open: monday?.open ?? '09:00',
-      close: monday?.close ?? '20:00',
+      workingHours: hours
+        ? {
+            mon: hours.mon ?? null,
+            tue: hours.tue ?? null,
+            wed: hours.wed ?? null,
+            thu: hours.thu ?? null,
+            fri: hours.fri ?? null,
+            sat: hours.sat ?? null,
+            sun: hours.sun ?? null,
+          }
+        : DEFAULT_WORKING_HOURS,
     })
     setBranchOpen(true)
   }
@@ -446,7 +470,7 @@ export function OperationConsole() {
     }
   }
 
-  if (loading) {
+  if (loading && !hasLoaded) {
     return (
       <div className="flex flex-col gap-4" aria-label="Cargando operación">
         <Skeleton className="h-28 rounded-2xl" />
@@ -471,7 +495,7 @@ export function OperationConsole() {
         <OperationStat label="Horarios" value={schedules.filter((schedule) => schedule.active).length} />
       </div>
 
-      <Tabs defaultValue="branches">
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab((value as string) ?? 'branches')}>
         <TabsList variant="line" className="w-full justify-start overflow-x-auto rounded-xl border border-border/70 bg-card px-2">
           <TabsTrigger value="branches"><MapPin data-icon="inline-start" />Sucursales</TabsTrigger>
           <TabsTrigger value="staff"><UserRoundCog data-icon="inline-start" />Equipo</TabsTrigger>
@@ -483,7 +507,7 @@ export function OperationConsole() {
           <ResourceCard
             title="Sucursales"
             description="Los horarios definidos acá restringen la agenda."
-            action={<Button size="sm" onClick={() => { setEditingBranchId(null); setBranchForm({ name: '', address: '', phone: '', open: '09:00', close: '20:00' }); setBranchOpen(true) }}><Plus data-icon="inline-start" />Nueva sucursal</Button>}
+            action={<Button size="sm" onClick={() => { setEditingBranchId(null); setBranchForm(initialBranchForm); setBranchOpen(true) }}><Plus data-icon="inline-start" />Nueva sucursal</Button>}
           >
             <Table>
               <TableHeader><TableRow><TableHead>Nombre</TableHead><TableHead>Dirección</TableHead><TableHead>Estado</TableHead><TableHead /></TableRow></TableHeader>
@@ -636,7 +660,7 @@ function ResourceCard({ title, description, action, children }: {
 
 function OperationStat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="paper-surface rounded-2xl border border-border/70 p-4 shadow-sm">
+    <div className="rounded-2xl border border-border/70 p-4 shadow-sm">
       <p className="text-[0.65rem] font-bold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
       <p className="mt-2 font-mono text-2xl font-semibold tabular-nums text-primary">{value}</p>
     </div>
@@ -651,6 +675,10 @@ function BranchDialog({ editing, open, onOpenChange, value, onChange, onSave }: 
   onChange: (value: typeof initialBranchForm) => void
   onSave: () => void
 }) {
+  function setDay(key: DayKey, hours: DayHours) {
+    onChange({ ...value, workingHours: { ...value.workingHours, [key]: hours } })
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -659,10 +687,44 @@ function BranchDialog({ editing, open, onOpenChange, value, onChange, onSave }: 
           <Field label="Nombre"><Input value={value.name} onChange={(event) => onChange({ ...value, name: event.target.value })} /></Field>
           <Field label="Dirección"><Input value={value.address} onChange={(event) => onChange({ ...value, address: event.target.value })} /></Field>
           <Field label="Teléfono"><Input value={value.phone} onChange={(event) => onChange({ ...value, phone: event.target.value })} /></Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Apertura"><Input type="time" value={value.open} onChange={(event) => onChange({ ...value, open: event.target.value })} /></Field>
-            <Field label="Cierre"><Input type="time" value={value.close} onChange={(event) => onChange({ ...value, close: event.target.value })} /></Field>
-          </div>
+          <Field label="Horario por día">
+            <div className="flex flex-col gap-2">
+              {WORKING_HOURS_DAYS.map(({ key, label }) => {
+                const dayHours = value.workingHours[key]
+                const dayOpen = dayHours !== null
+                return (
+                  <div key={key} className="flex flex-col gap-2 rounded-lg border p-2 sm:flex-row sm:items-center sm:gap-3">
+                    <div className="flex w-32 shrink-0 items-center gap-2">
+                      <Checkbox
+                        id={`day-${key}`}
+                        checked={dayOpen}
+                        onCheckedChange={(checked) => setDay(key, checked ? { open: '09:00', close: '20:00' } : null)}
+                      />
+                      <Label htmlFor={`day-${key}`} className="text-sm font-medium">{label}</Label>
+                    </div>
+                    {dayOpen ? (
+                      <div className="grid flex-1 grid-cols-2 gap-2">
+                        <Input
+                          type="time"
+                          aria-label={`Apertura ${label}`}
+                          value={dayHours.open}
+                          onChange={(event) => setDay(key, { ...dayHours, open: event.target.value })}
+                        />
+                        <Input
+                          type="time"
+                          aria-label={`Cierre ${label}`}
+                          value={dayHours.close}
+                          onChange={(event) => setDay(key, { ...dayHours, close: event.target.value })}
+                        />
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">Cerrado</p>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </Field>
         </div>
         <DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button onClick={onSave}>{editing ? 'Guardar' : 'Crear'}</Button></DialogFooter>
       </DialogContent>
@@ -670,7 +732,7 @@ function BranchDialog({ editing, open, onOpenChange, value, onChange, onSave }: 
   )
 }
 
-const initialBranchForm = { name: '', address: '', phone: '', open: '09:00', close: '20:00' }
+const initialBranchForm = { name: '', address: '', phone: '', workingHours: DEFAULT_WORKING_HOURS }
 
 function StaffDialog({ editing, open, onOpenChange, branches, value, onChange, onSave }: {
   editing: boolean
@@ -748,7 +810,7 @@ function ServiceDialog({ editing, open, onOpenChange, value, onChange, onSave }:
           <Field label="Nombre"><Input value={value.name} onChange={(event) => onChange({ ...value, name: event.target.value })} /></Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Duración (min)"><Input type="number" min="5" value={value.durationMinutes} onChange={(event) => onChange({ ...value, durationMinutes: event.target.value })} /></Field>
-            <Field label="Precio"><Input inputMode="decimal" value={value.price} onChange={(event) => onChange({ ...value, price: event.target.value })} /></Field>
+            <Field label="Precio"><MoneyInput value={value.price} onValueChange={(price) => onChange({ ...value, price })} /></Field>
           </div>
         </div>
         <DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button><Button onClick={onSave}>{editing ? 'Guardar' : 'Crear servicio'}</Button></DialogFooter>

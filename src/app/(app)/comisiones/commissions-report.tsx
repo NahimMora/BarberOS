@@ -20,6 +20,14 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -83,6 +91,7 @@ export function CommissionsReport({ role }: { role: 'admin' | 'barber' }) {
   const [report, setReport] = useState<Report | null>(null)
   const [loading, setLoading] = useState(true)
   const [settlingBarberId, setSettlingBarberId] = useState<string | null>(null)
+  const [settleTarget, setSettleTarget] = useState<Summary | null>(null)
 
   const loadReport = useCallback(async () => {
     setLoading(true)
@@ -125,8 +134,13 @@ export function CommissionsReport({ role }: { role: 'admin' | 'barber' }) {
       await loadReport()
     } finally {
       setSettlingBarberId(null)
+      setSettleTarget(null)
     }
   }
+
+  const pendingEntriesCount = settleTarget
+    ? report?.entries.filter((entry) => entry.barberId === settleTarget.barberId && entry.status === 'pending').length ?? 0
+    : 0
 
   return (
     <div className="flex flex-col gap-7">
@@ -161,7 +175,7 @@ export function CommissionsReport({ role }: { role: 'admin' | 'barber' }) {
         </section>
       )}
 
-      <Card className="paper-surface">
+      <Card>
         <CardHeader>
           <Badge variant="secondary" className="w-fit">Período {period}</Badge>
           <CardTitle className="text-2xl">
@@ -207,7 +221,7 @@ export function CommissionsReport({ role }: { role: 'admin' | 'barber' }) {
                             <Button
                               size="sm"
                               disabled={settlingBarberId === row.barberId}
-                              onClick={() => void settle(row.barberId)}
+                              onClick={() => setSettleTarget(row)}
                             >
                               <BadgeCheck />
                               Liquidar
@@ -245,7 +259,7 @@ export function CommissionsReport({ role }: { role: 'admin' | 'barber' }) {
                       <Button
                         className="mt-4 w-full"
                         disabled={settlingBarberId === row.barberId}
-                        onClick={() => void settle(row.barberId)}
+                        onClick={() => setSettleTarget(row)}
                       >
                         <BadgeCheck />
                         Liquidar período
@@ -305,6 +319,47 @@ export function CommissionsReport({ role }: { role: 'admin' | 'barber' }) {
           </CardContent>
         </Card>
       ) : null}
+
+      <Dialog open={Boolean(settleTarget)} onOpenChange={(open) => !open && setSettleTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirmar liquidación</DialogTitle>
+            <DialogDescription>
+              Esta acción marca como pagadas todas las comisiones pendientes del período. No se puede deshacer desde acá.
+            </DialogDescription>
+          </DialogHeader>
+          {settleTarget ? (
+            <div className="flex flex-col gap-2 rounded-xl border bg-muted/40 p-4 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Barbero</span>
+                <span className="font-semibold">{settleTarget.barberName}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Período</span>
+                <span className="font-semibold">{period}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Comisiones afectadas</span>
+                <span className="font-semibold">{pendingEntriesCount}</span>
+              </div>
+              <div className="flex items-center justify-between border-t pt-2">
+                <span className="text-muted-foreground">Monto total a liquidar</span>
+                <span className="font-mono font-bold tabular-nums">{formatArs(settleTarget.pendingAmount)}</span>
+              </div>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSettleTarget(null)}>Cancelar</Button>
+            <Button
+              disabled={!settleTarget || settlingBarberId === settleTarget.barberId}
+              onClick={() => settleTarget && void settle(settleTarget.barberId)}
+            >
+              <BadgeCheck />
+              {settleTarget && settlingBarberId === settleTarget.barberId ? 'Liquidando...' : 'Confirmar liquidación'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

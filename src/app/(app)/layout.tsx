@@ -14,7 +14,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <AppSidebar role={session.role} />
       <div className="min-w-0 flex-1">
         <AppHeader user={session} />
-        <main className="app-canvas min-h-[calc(100dvh-4rem)] px-4 pb-28 pt-6 sm:px-6 md:pb-10 md:pt-8 lg:px-8">
+        <main className="min-h-[calc(100dvh-4rem)] px-4 pb-28 pt-6 sm:px-6 md:pb-10 md:pt-8 lg:px-8">
           <div className="page-enter mx-auto w-full max-w-[96rem]">
             {children}
           </div>

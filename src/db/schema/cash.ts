@@ -27,6 +27,7 @@ export const cashMovementTypeEnum = pgEnum('cash_movement_type', [
   'expense',
   'withdrawal',
   'adjustment',
+  'void',
 ])
 
 export const cashSessions = pgTable('cash_sessions', {
@@ -108,16 +109,23 @@ export const cashMovements = pgTable('cash_movements', {
     table.createdAt,
   ),
   index('cash_movements_reference_sale_idx').on(table.referenceSaleId),
+  // Assumes at most one 'sale' movement per (sale, payment_method) — true while
+  // mixed/split payments are out of MVP scope (AGENTS.md). If that changes, these
+  // two unique indexes need to move to a broader key (e.g. include payment id).
   uniqueIndex('cash_movements_sale_method_idx')
     .on(table.referenceSaleId, table.paymentMethod)
     .where(sql`${table.type} = 'sale' AND ${table.referenceSaleId} IS NOT NULL`),
+  uniqueIndex('cash_movements_void_method_idx')
+    .on(table.referenceSaleId, table.paymentMethod)
+    .where(sql`${table.type} = 'void' AND ${table.referenceSaleId} IS NOT NULL`),
   check('cash_movements_amount_valid', sql`
     (${table.type} = 'adjustment' AND ${table.amount} <> 0)
-    OR (${table.type} <> 'adjustment' AND ${table.amount} > 0)
+    OR (${table.type} = 'void' AND ${table.amount} < 0)
+    OR (${table.type} NOT IN ('adjustment', 'void') AND ${table.amount} > 0)
   `),
   check('cash_movements_sale_reference', sql`
-    (${table.type} = 'sale' AND ${table.referenceSaleId} IS NOT NULL)
-    OR (${table.type} <> 'sale' AND ${table.referenceSaleId} IS NULL)
+    (${table.type} IN ('sale', 'void') AND ${table.referenceSaleId} IS NOT NULL)
+    OR (${table.type} NOT IN ('sale', 'void') AND ${table.referenceSaleId} IS NULL)
   `),
 ])
 

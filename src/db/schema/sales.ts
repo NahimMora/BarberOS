@@ -48,6 +48,9 @@ export const sales = pgTable('sales', {
   status: saleStatusEnum('status').notNull().default('draft'),
   createdBy: uuid('created_by').notNull().references(() => users.id),
   paidAt: timestamp('paid_at', { withTimezone: true }),
+  voidedAt: timestamp('voided_at', { withTimezone: true }),
+  voidedBy: uuid('voided_by').references(() => users.id),
+  voidReason: text('void_reason'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
@@ -71,8 +74,14 @@ export const sales = pgTable('sales', {
   `),
   check('sales_total_matches', sql`${table.total} = ${table.subtotal} - ${table.discount}`),
   check('sales_paid_at_matches_status', sql`
-    (${table.status} = 'paid' AND ${table.paidAt} IS NOT NULL)
-    OR (${table.status} <> 'paid' AND ${table.paidAt} IS NULL)
+    (${table.status} = 'paid' AND ${table.paidAt} IS NOT NULL AND ${table.voidedAt} IS NULL)
+    OR (${table.status} = 'cancelled' AND ${table.voidedAt} IS NOT NULL AND ${table.paidAt} IS NOT NULL)
+    OR (${table.status} = 'cancelled' AND ${table.voidedAt} IS NULL AND ${table.paidAt} IS NULL)
+    OR (${table.status} NOT IN ('paid', 'cancelled') AND ${table.paidAt} IS NULL AND ${table.voidedAt} IS NULL)
+  `),
+  check('sales_void_fields_consistent', sql`
+    (${table.voidedAt} IS NULL AND ${table.voidedBy} IS NULL AND ${table.voidReason} IS NULL)
+    OR (${table.voidedAt} IS NOT NULL AND ${table.voidedBy} IS NOT NULL AND ${table.voidReason} IS NOT NULL)
   `),
 ])
 

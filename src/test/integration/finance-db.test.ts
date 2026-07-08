@@ -157,6 +157,201 @@ describeDatabase('finance PostgreSQL constraints', () => {
     expect(constraint).toBe('cash_sessions_state_valid')
   })
 
+  it('allows a voided sale to keep its original paid_at', async () => {
+    let error: unknown
+    try {
+      await sql.begin(async (tx) => {
+        const [branch] = await tx<{ id: string }[]>`
+          insert into branches (organization_id, name)
+          values (${organizationId}, 'Voided sale constraint test')
+          returning id
+        `
+        await tx`
+          insert into sales (
+            organization_id,
+            branch_id,
+            barber_id,
+            subtotal,
+            discount,
+            total,
+            status,
+            created_by,
+            paid_at,
+            voided_at,
+            voided_by,
+            void_reason
+          )
+          values (
+            ${organizationId},
+            ${branch.id},
+            ${barberId},
+            1000.00,
+            0.00,
+            1000.00,
+            'cancelled',
+            ${adminId},
+            now() - interval '1 day',
+            now(),
+            ${adminId},
+            'Cliente se arrepintió'
+          )
+        `
+      })
+    } catch (thrown) {
+      error = thrown
+    }
+
+    expect(error).toBeUndefined()
+  })
+
+  it('rejects a cancelled sale with paid_at but no voided_at', async () => {
+    let constraint: string | undefined
+    try {
+      await sql.begin(async (tx) => {
+        const [branch] = await tx<{ id: string }[]>`
+          insert into branches (organization_id, name)
+          values (${organizationId}, 'Void without voided_at test')
+          returning id
+        `
+        await tx`
+          insert into sales (
+            organization_id,
+            branch_id,
+            barber_id,
+            subtotal,
+            discount,
+            total,
+            status,
+            created_by,
+            paid_at
+          )
+          values (
+            ${organizationId},
+            ${branch.id},
+            ${barberId},
+            1000.00,
+            0.00,
+            1000.00,
+            'cancelled',
+            ${adminId},
+            now()
+          )
+        `
+      })
+    } catch (error) {
+      constraint = (error as { constraint_name?: string }).constraint_name
+    }
+
+    expect(constraint).toBe('sales_paid_at_matches_status')
+  })
+
+  it('requires void trazability fields together', async () => {
+    let constraint: string | undefined
+    try {
+      await sql.begin(async (tx) => {
+        const [branch] = await tx<{ id: string }[]>`
+          insert into branches (organization_id, name)
+          values (${organizationId}, 'Void trazability test')
+          returning id
+        `
+        await tx`
+          insert into sales (
+            organization_id,
+            branch_id,
+            barber_id,
+            subtotal,
+            discount,
+            total,
+            status,
+            created_by,
+            paid_at,
+            voided_at
+          )
+          values (
+            ${organizationId},
+            ${branch.id},
+            ${barberId},
+            1000.00,
+            0.00,
+            1000.00,
+            'cancelled',
+            ${adminId},
+            now(),
+            now()
+          )
+        `
+      })
+    } catch (error) {
+      constraint = (error as { constraint_name?: string }).constraint_name
+    }
+
+    expect(constraint).toBe('sales_void_fields_consistent')
+  })
+
+  it('requires a void cash movement to carry a negative amount', async () => {
+    let constraint: string | undefined
+    try {
+      await sql.begin(async (tx) => {
+        const [branch] = await tx<{ id: string }[]>`
+          insert into branches (organization_id, name)
+          values (${organizationId}, 'Void movement sign test')
+          returning id
+        `
+        const [session] = await tx<{ id: string }[]>`
+          insert into cash_sessions (organization_id, branch_id, opened_by, opening_amount)
+          values (${organizationId}, ${branch.id}, ${adminId}, 0.00)
+          returning id
+        `
+        const [sale] = await tx<{ id: string }[]>`
+          insert into sales (
+            organization_id, branch_id, barber_id, subtotal, discount, total,
+            status, created_by, paid_at
+          )
+          values (${organizationId}, ${branch.id}, ${barberId}, 1000.00, 0.00, 1000.00, 'paid', ${adminId}, now())
+          returning id
+        `
+        await tx`
+          insert into cash_movements (
+            organization_id, cash_session_id, type, amount, payment_method, reference_sale_id, created_by
+          )
+          values (${organizationId}, ${session.id}, 'void', 1000.00, 'cash', ${sale.id}, ${adminId})
+        `
+      })
+    } catch (error) {
+      constraint = (error as { constraint_name?: string }).constraint_name
+    }
+
+    expect(constraint).toBe('cash_movements_amount_valid')
+  })
+
+  it('requires a void cash movement to reference the voided sale', async () => {
+    let constraint: string | undefined
+    try {
+      await sql.begin(async (tx) => {
+        const [branch] = await tx<{ id: string }[]>`
+          insert into branches (organization_id, name)
+          values (${organizationId}, 'Void movement reference test')
+          returning id
+        `
+        const [session] = await tx<{ id: string }[]>`
+          insert into cash_sessions (organization_id, branch_id, opened_by, opening_amount)
+          values (${organizationId}, ${branch.id}, ${adminId}, 0.00)
+          returning id
+        `
+        await tx`
+          insert into cash_movements (
+            organization_id, cash_session_id, type, amount, payment_method, created_by
+          )
+          values (${organizationId}, ${session.id}, 'void', -1000.00, 'cash', ${adminId})
+        `
+      })
+    } catch (error) {
+      constraint = (error as { constraint_name?: string }).constraint_name
+    }
+
+    expect(constraint).toBe('cash_movements_sale_reference')
+  })
+
   it('prevents updates to recorded payments', async () => {
     let errorCode: string | undefined
     try {

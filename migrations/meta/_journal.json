@@ -71,6 +71,20 @@
       "when": 1780770398373,
       "tag": "0009_happy_spacker_dave",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1783487377800,
+      "tag": "0010_void_enum_value",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1783487612862,
+      "tag": "0011_sale_void_support",
+      "breakpoints": true
     }
   ]
 }

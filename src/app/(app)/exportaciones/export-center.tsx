@@ -119,7 +119,7 @@ export function ExportCenter({
         description="Descargá información operativa con el mismo alcance de sucursales y permisos que usás en BarberOS."
       />
 
-      <Card className="paper-surface">
+      <Card>
         <CardHeader className="border-b">
           <CardTitle className="text-xl">Contexto del reporte</CardTitle>
           <CardDescription>

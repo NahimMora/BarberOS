@@ -4,6 +4,8 @@ import {
   calculateCommission,
   calculateSaleTotals,
   formatCents,
+  formatMoneyDisplay,
+  maskMoneyInput,
   parseMoney,
 } from './money'
 
@@ -52,6 +54,79 @@ describe('money', () => {
       expectedMercadopagoManual: '3000.00',
       expectedOther: '0.00',
       expectedTotal: '38000.00',
+    })
+  })
+
+  it('reverses a voided sale from the affected payment method only', () => {
+    expect(calculateCashSnapshot('0.00', [
+      { type: 'sale', method: 'cash', amount: '5000.00' },
+      { type: 'sale', method: 'card', amount: '3000.00' },
+      { type: 'void', method: 'cash', amount: '-5000.00' },
+    ])).toEqual({
+      expectedCash: '0.00',
+      expectedTransfer: '0.00',
+      expectedCard: '3000.00',
+      expectedMercadopagoManual: '0.00',
+      expectedOther: '0.00',
+      expectedTotal: '3000.00',
+    })
+  })
+
+  it('rejects a void movement with a non-negative amount', () => {
+    expect(() => calculateCashSnapshot('0.00', [
+      { type: 'void', method: 'cash', amount: '100.00' },
+    ])).toThrow('El reverso de anulación debe ser negativo')
+  })
+
+  it('formats a canonical value for display with thousands and two decimals', () => {
+    expect(formatMoneyDisplay('1234.5')).toBe('1.234,50')
+    expect(formatMoneyDisplay('0.00')).toBe('0,00')
+    expect(formatMoneyDisplay('')).toBe('')
+    expect(formatMoneyDisplay('-500.00', true)).toBe('-500,00')
+  })
+
+  it('groups thousands live while typing a whole amount', () => {
+    expect(maskMoneyInput('1000', 4)).toEqual({
+      display: '1.000',
+      cursor: 5,
+      canonical: '1000.00',
+    })
+  })
+
+  it('keeps a decimal comma and pads cents on submit', () => {
+    expect(maskMoneyInput('1500,5', 6)).toEqual({
+      display: '1.500,5',
+      cursor: 7,
+      canonical: '1500.50',
+    })
+  })
+
+  it('treats an empty field as zero without forcing a visible 0', () => {
+    expect(maskMoneyInput('', 0)).toEqual({
+      display: '',
+      cursor: 0,
+      canonical: '0.00',
+    })
+  })
+
+  it('collapses a leading zero once another digit is typed', () => {
+    expect(maskMoneyInput('0500', 4)).toEqual({
+      display: '500',
+      cursor: 3,
+      canonical: '500.00',
+    })
+  })
+
+  it('supports a negative sign only when explicitly allowed', () => {
+    expect(maskMoneyInput('-1500', 5, true)).toEqual({
+      display: '-1.500',
+      cursor: 6,
+      canonical: '-1500.00',
+    })
+    expect(maskMoneyInput('-1500', 5, false)).toEqual({
+      display: '1.500',
+      cursor: 5,
+      canonical: '1500.00',
     })
   })
 })

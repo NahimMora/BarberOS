@@ -129,7 +129,7 @@ export function ControlCenter() {
         description="Cambios sensibles, hechos de negocio y señales técnicas en un registro consultable."
       />
 
-      <Card className="paper-surface">
+      <Card>
         <CardHeader className="border-b">
           <CardTitle className="text-xl">Registro operativo</CardTitle>
           <CardDescription>

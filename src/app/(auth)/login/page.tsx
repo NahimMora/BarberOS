@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { ArrowRight, CalendarCheck2, CircleDollarSign, ShieldCheck } from 'lucide-react'
 import { BrandMark } from '@/components/brand-mark'
 import { Button } from '@/components/ui/button'
@@ -68,7 +69,7 @@ export default function LoginPage() {
       </section>
 
       <section className="flex items-center justify-center px-4 py-10 sm:px-8">
-        <Card className="paper-surface w-full max-w-md shadow-xl shadow-foreground/5">
+        <Card className="w-full max-w-md shadow-xl shadow-foreground/5">
           <CardHeader className="gap-3 p-6 sm:p-8">
             <BrandMark className="mb-4 lg:hidden" />
             <div>
@@ -95,7 +96,12 @@ export default function LoginPage() {
                   />
                 </Field>
                 <Field>
-                  <FieldLabel htmlFor="password">Contraseña</FieldLabel>
+                  <div className="flex items-center justify-between">
+                    <FieldLabel htmlFor="password">Contraseña</FieldLabel>
+                    <Link href="/recuperar-contrasena" className="text-xs font-semibold text-primary hover:underline">
+                      ¿Olvidaste tu contraseña?
+                    </Link>
+                  </div>
                   <Input
                     id="password"
                     type="password"

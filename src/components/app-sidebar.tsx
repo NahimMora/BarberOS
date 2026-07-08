@@ -93,7 +93,7 @@ export function MobileNavigation({ role }: { role: Role }) {
   )
 
   return (
-    <nav className="fixed inset-x-3 bottom-3 z-40 flex min-h-16 items-stretch justify-around rounded-2xl border border-border/70 bg-card/95 p-1.5 shadow-xl backdrop-blur-xl md:hidden">
+    <nav className="fixed inset-x-3 bottom-3 z-40 flex min-h-16 items-stretch justify-around rounded-3xl border border-border/70 bg-card/95 p-1.5 shadow-[0_2px_5px_rgba(43,32,10,0.07),0_14px_32px_-10px_rgba(43,32,10,0.24)] backdrop-blur-xl md:hidden">
       {visible.map((item) => {
         const Icon = item.icon
         const active = pathname === item.href || pathname.startsWith(`${item.href}/`)
@@ -102,13 +102,16 @@ export function MobileNavigation({ role }: { role: Role }) {
             key={item.href}
             href={item.href}
             aria-current={active ? 'page' : undefined}
+            aria-label={item.label}
             className={cn(
-              'flex min-w-16 flex-1 flex-col items-center justify-center gap-1 rounded-xl px-2 text-[0.65rem] font-bold transition-colors',
-              active ? 'bg-primary text-primary-foreground' : 'text-muted-foreground',
+              'flex min-h-10 min-w-10 items-center justify-center gap-1.5 rounded-xl text-[0.65rem] font-bold transition-colors',
+              active
+                ? 'flex-row flex-1 px-3 bg-primary text-primary-foreground'
+                : 'flex-col flex-1 px-2 text-muted-foreground',
             )}
           >
-            <Icon className="size-4" aria-hidden="true" />
-            {item.label}
+            <Icon className="size-4 shrink-0" aria-hidden="true" />
+            {active ? <span>{item.label}</span> : null}
           </Link>
         )
       })}

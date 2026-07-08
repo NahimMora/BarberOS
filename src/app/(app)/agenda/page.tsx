@@ -357,7 +357,7 @@ export default function AgendaPage() {
         )}
       />
 
-      <Card className="paper-surface">
+      <Card elevated>
         <CardContent className="flex flex-col gap-5 py-1">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -398,7 +398,7 @@ export default function AgendaPage() {
           ))}
         </div>
       ) : (
-        <div className="hidden overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm md:block">
+        <div className="hidden overflow-hidden rounded-2xl border border-border bg-card md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -907,7 +907,7 @@ function AppointmentMobileCard({
     .join(' ') || 'Walk-in'
 
   return (
-    <Card>
+    <Card elevated>
       <CardContent className="flex flex-col gap-4 py-1">
         <div className="flex items-start justify-between gap-3">
           <div>

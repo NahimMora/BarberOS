@@ -1,5 +1,5 @@
 export type PaymentMethod = 'cash' | 'transfer' | 'card' | 'mercadopago_manual' | 'other'
-export type CashMovementType = 'sale' | 'income' | 'expense' | 'withdrawal' | 'adjustment'
+export type CashMovementType = 'sale' | 'income' | 'expense' | 'withdrawal' | 'adjustment' | 'void'
 
 const MONEY_PATTERN = /^-?\d{1,10}(?:\.\d{1,2})?$/
 
@@ -81,7 +81,9 @@ export function calculateCashSnapshot(
 
   for (const movement of movements) {
     const amount = parseMoney(movement.amount)
-    if (movement.type !== 'adjustment' && amount < 0n) {
+    if (movement.type === 'void') {
+      if (amount >= 0n) throw new MoneyError('El reverso de anulación debe ser negativo')
+    } else if (movement.type !== 'adjustment' && amount < 0n) {
       throw new MoneyError('El movimiento no puede ser negativo')
     }
     const signedAmount = movement.type === 'expense' || movement.type === 'withdrawal'
@@ -99,6 +101,90 @@ export function calculateCashSnapshot(
     expectedOther: formatCents(totals.other),
     expectedTotal: formatCents(expectedTotal),
   }
+}
+
+const isSignificantChar = (char: string) => (char >= '0' && char <= '9') || char === ','
+
+/**
+ * Formats a canonical decimal string (e.g. "1234.5") as an es-AR display
+ * string with thousands separators and two decimals (e.g. "1.234,50").
+ * Used to (re)initialize a money input's display from an external value.
+ */
+export function formatMoneyDisplay(canonical: string, allowNegative = false): string {
+  if (!canonical) return ''
+  const negative = allowNegative && canonical.startsWith('-')
+  const body = negative ? canonical.slice(1) : canonical
+  const [intPart = '0', decPart = '00'] = body.split('.')
+  const cleanInt = intPart.replace(/^0+(?=\d)/, '') || '0'
+  const grouped = cleanInt.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+  const dec = decPart.padEnd(2, '0').slice(0, 2)
+  return `${negative ? '-' : ''}${grouped},${dec}`
+}
+
+/**
+ * Reformats a money input's raw (in-progress) value on every keystroke:
+ * strips decoration, regroups thousands with '.', keeps ',' as the single
+ * decimal separator, and relocates the caret by counting significant
+ * (digit/comma) characters rather than raw string length — so grouping
+ * separators appearing/disappearing don't jump the caret to the end.
+ */
+export function maskMoneyInput(
+  rawValue: string,
+  cursorIndex: number,
+  allowNegative = false,
+): { display: string; cursor: number; canonical: string } {
+  if (rawValue.trim() === '') {
+    return { display: '', cursor: 0, canonical: '0.00' }
+  }
+
+  const negative = allowNegative && rawValue.includes('-')
+
+  let significantBeforeCursor = 0
+  for (let i = 0; i < cursorIndex && i < rawValue.length; i += 1) {
+    if (isSignificantChar(rawValue[i])) significantBeforeCursor += 1
+  }
+
+  let seenComma = false
+  let intDigits = ''
+  let decDigits = ''
+  for (const char of rawValue) {
+    if (char === ',' && !seenComma) {
+      seenComma = true
+      continue
+    }
+    if (char >= '0' && char <= '9') {
+      if (seenComma) {
+        if (decDigits.length < 2) decDigits += char
+      } else {
+        intDigits += char
+      }
+    }
+  }
+  intDigits = intDigits.replace(/^0+(?=\d)/, '')
+
+  const groupedInt = intDigits === '' ? '0' : intDigits.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+  const sign = negative ? '-' : ''
+  const display = `${sign}${groupedInt}${seenComma ? `,${decDigits}` : ''}`
+
+  let cursor = display.length
+  if (significantBeforeCursor === 0) {
+    cursor = sign.length
+  } else {
+    let count = 0
+    for (let i = 0; i < display.length; i += 1) {
+      if (isSignificantChar(display[i])) count += 1
+      if (count >= significantBeforeCursor) {
+        cursor = i + 1
+        break
+      }
+    }
+  }
+
+  const canonicalInt = intDigits === '' ? '0' : intDigits
+  const canonicalDec = decDigits.padEnd(2, '0').slice(0, 2)
+  const canonical = `${sign}${canonicalInt}.${canonicalDec}`
+
+  return { display, cursor, canonical }
 }
 
 export class MoneyError extends Error {

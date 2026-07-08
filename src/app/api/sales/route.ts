@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
+import { and, desc, eq, gte, inArray, isNull, lt } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import {
   appointments,
@@ -17,6 +18,7 @@ import {
   payments,
   saleItems,
   sales,
+  saleStatusEnum,
   services,
   userBranches,
   users,
@@ -26,6 +28,7 @@ import { hasBranchAccess } from '@/lib/auth/authorization'
 import { canChargeSale } from '@/lib/finance/authorization'
 import { getCommissionPeriod } from '@/lib/finance/commission-period'
 import { FinanceError } from '@/lib/finance/errors'
+import { getLocalDayUtcRange } from '@/lib/datetime/local-day-range'
 import {
   calculateCommission,
   calculateSaleTotals,
@@ -33,6 +36,8 @@ import {
   MoneyError,
   parseMoney,
 } from '@/lib/money/money'
+
+const barberUsers = alias(users, 'sales_barber_users')
 
 const paymentMethods = ['cash', 'transfer', 'card', 'mercadopago_manual', 'other'] as const
 
@@ -72,7 +77,12 @@ export async function GET(req: Request) {
   const user = await getSession()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const branchId = new URL(req.url).searchParams.get('branch_id')
+  const params = new URL(req.url).searchParams
+  const branchId = params.get('branch_id')
+  const statusParam = params.get('status')
+  const from = params.get('from')
+  const to = params.get('to')
+
   const conditions = [eq(sales.organizationId, user.organizationId)]
 
   if (branchId) {
@@ -87,27 +97,57 @@ export async function GET(req: Request) {
   if (user.role === 'barber') {
     conditions.push(eq(sales.barberId, user.id))
   }
+  if (statusParam) {
+    if (!saleStatusEnum.enumValues.includes(statusParam as typeof saleStatusEnum.enumValues[number])) {
+      return NextResponse.json({ error: 'status inválido' }, { status: 400 })
+    }
+    conditions.push(eq(sales.status, statusParam as typeof saleStatusEnum.enumValues[number]))
+  }
+  if (from || to) {
+    const [settings] = await db
+      .select({ defaultTimezone: organizationSettings.defaultTimezone })
+      .from(organizationSettings)
+      .where(eq(organizationSettings.organizationId, user.organizationId))
+      .limit(1)
+    const timezone = settings?.defaultTimezone ?? 'America/Argentina/Buenos_Aires'
+    try {
+      if (from) conditions.push(gte(sales.paidAt, getLocalDayUtcRange(from, timezone).start))
+      if (to) conditions.push(lt(sales.paidAt, getLocalDayUtcRange(to, timezone).end))
+    } catch {
+      return NextResponse.json({ error: 'Rango de fechas inválido' }, { status: 400 })
+    }
+  }
 
   const rows = await db
     .select({
       id: sales.id,
       branchId: sales.branchId,
+      branchName: branches.name,
       appointmentId: sales.appointmentId,
       barberId: sales.barberId,
+      barberName: barberUsers.fullName,
       clientId: sales.clientId,
+      clientFirstName: clients.firstName,
+      clientLastName: clients.lastName,
       subtotal: sales.subtotal,
       discount: sales.discount,
       total: sales.total,
       status: sales.status,
       paidAt: sales.paidAt,
+      voidedAt: sales.voidedAt,
+      voidedBy: sales.voidedBy,
+      voidReason: sales.voidReason,
       paymentMethod: payments.method,
       paymentAmount: payments.amount,
     })
     .from(sales)
     .leftJoin(payments, eq(payments.saleId, sales.id))
+    .leftJoin(clients, eq(clients.id, sales.clientId))
+    .leftJoin(branches, eq(branches.id, sales.branchId))
+    .leftJoin(barberUsers, eq(barberUsers.id, sales.barberId))
     .where(and(...conditions))
     .orderBy(desc(sales.createdAt))
-    .limit(100)
+    .limit(200)
 
   return NextResponse.json(rows)
 }

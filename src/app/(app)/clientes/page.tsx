@@ -44,6 +44,8 @@ type Client = {
   notes: string | null
   active: boolean
   createdAt: string
+  consentData: boolean
+  consentWhatsapp: boolean
 }
 
 type ClientForm = {
@@ -72,6 +74,7 @@ export default function ClientesPage() {
   const [editing, setEditing] = useState<Client | null>(null)
   const [form, setForm] = useState<ClientForm>(empty)
   const [saving, setSaving] = useState(false)
+  const [initialConsent, setInitialConsent] = useState<{ consentData: boolean; consentWhatsapp: boolean } | null>(null)
 
   const fetchClients = useCallback(async () => {
     setLoading(true)
@@ -96,6 +99,7 @@ export default function ClientesPage() {
   function openNew() {
     setEditing(null)
     setForm(empty)
+    setInitialConsent(null)
     setDialogOpen(true)
   }
 
@@ -106,9 +110,10 @@ export default function ClientesPage() {
       lastName: c.lastName ?? '',
       whatsappRaw: c.whatsappRaw ?? '',
       notes: c.notes ?? '',
-      consentData: false,
-      consentWhatsapp: false,
+      consentData: c.consentData,
+      consentWhatsapp: c.consentWhatsapp,
     })
+    setInitialConsent({ consentData: c.consentData, consentWhatsapp: c.consentWhatsapp })
     setDialogOpen(true)
   }
 
@@ -117,10 +122,23 @@ export default function ClientesPage() {
     try {
       const url = editing ? `/api/clients/${editing.id}` : '/api/clients'
       const method = editing ? 'PATCH' : 'POST'
+      const payload: Record<string, unknown> = {
+        firstName: form.firstName,
+        lastName: form.lastName,
+        whatsappRaw: form.whatsappRaw,
+        notes: form.notes,
+      }
+      if (!editing) {
+        payload.consentData = form.consentData
+        payload.consentWhatsapp = form.consentWhatsapp
+      } else {
+        if (form.consentData !== initialConsent?.consentData) payload.consentData = form.consentData
+        if (form.consentWhatsapp !== initialConsent?.consentWhatsapp) payload.consentWhatsapp = form.consentWhatsapp
+      }
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       })
 
       if (res.status === 409) {
@@ -156,7 +174,7 @@ export default function ClientesPage() {
         )}
       />
 
-      <Card className="paper-surface">
+      <Card>
         <CardContent className="flex flex-col gap-3 py-1 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm font-semibold">Directorio activo</p>
