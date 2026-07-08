@@ -167,6 +167,16 @@ to reuse.
   `src/lib/money/display.ts`).
 - Physical cash is visually separated from digital/manual payment methods
   wherever both appear together (cash console stat tiles, close-cash dialog).
+- Every editable money field uses `MoneyInput`
+  (`src/components/ui/money-input.tsx`) — never a raw `<Input>` for an
+  amount. It masks thousands as you type (`1000` → `1.000`) and always
+  emits a canonical decimal string, so it's a drop-in replacement wherever
+  a plain `Input` was taking a money value.
+- Status is always text plus a semantic badge or icon — when two states
+  would otherwise share the same badge variant (e.g. two "in-flight"
+  appointment statuses), add a small icon rather than reusing an
+  unlabeled color to tell them apart (see `StatusBadge` in
+  `src/app/(app)/agenda/page.tsx`).
 
 ## Motion
 
