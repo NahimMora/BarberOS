@@ -59,12 +59,23 @@ hardcoded hex/oklch values.
 
 ### Typography
 
-- **Single typeface:** Plus Jakarta Sans for everything — body copy and
-  headings alike (`font-sans` and `font-heading` both resolve to it). There
-  is no separate display face; Newsreader and Manrope, used in the previous
-  direction, are gone from the codebase.
+- **Single typeface:** Geist for everything — body copy and headings alike
+  (`font-sans` and `font-heading` both resolve to it, loaded via
+  `next/font/google` as `Geist` in `src/app/layout.tsx`). There is no
+  separate display face; Newsreader, Manrope, and Plus Jakarta Sans, used in
+  earlier directions, are gone from the codebase.
 - **Monospace:** Geist Mono, reserved for money, timestamps, and other
-  aligned numeric/identifier data.
+  aligned numeric/identifier data. Geist Sans + Geist Mono is a matched
+  family, not two unrelated typefaces pulling in different directions.
+- **Why Geist over the alternatives considered:** Inter reads as generic
+  SaaS-dashboard default — the thing Soft Studio is trying not to be.
+  Nunito Sans risks tipping warm-and-rounded into childish at this weight
+  and size. Satoshi isn't self-hosted or vetted in this codebase, so
+  reaching for it would add an external font dependency for an unconfirmed
+  gain. Geist is warmer and less mechanical than Plus Jakarta Sans at body
+  sizes, ships through the same `next/font/google` pipeline already used
+  for Geist Mono (zero new dependencies), and gives the app a sans/mono
+  pair from the same family instead of two unrelated typefaces.
 
 ### Shape and Depth
 
