@@ -29,7 +29,11 @@
 2. Las 5 variables de `.env.example` cargadas en la plataforma (ver
    [Variables de entorno](#variables-de-entorno)).
 3. Migraciones aplicadas contra la base de producción: `npm run db:migrate`
-   (usa `DIRECT_URL`, requiere permisos de DDL).
+   (usa `DIRECT_URL`, requiere permisos de DDL). **Si el proyecto de
+   Supabase es completamente nuevo (nunca corrieron migraciones ahí),
+   usar `npm run db:migrate:fresh` en su lugar** — ver la nota en
+   [Base de datos](#base-de-datos) sobre por qué `db:migrate` normal falla
+   contra una base vacía.
 4. En Supabase → Authentication → URL Configuration, agregar el dominio de
    producción a **Redirect URLs** (lo necesita el flujo de "olvidé mi
    contraseña", que arma la URL de retorno con `window.location.origin` —
@@ -77,6 +81,21 @@ Ya cubierto arriba (pooler). Migraciones: `npm run db:migrate` corre
 `drizzle-kit migrate` contra `DIRECT_URL` — hacerlo antes de que la nueva
 versión de la app reciba tráfico, no después (evita que código nuevo
 consulte columnas que todavía no existen).
+
+**Excepción — base de datos completamente nueva:** `npm run db:migrate`
+aplica **todas** las migraciones pendientes en una única transacción.
+Contra el Supabase de desarrollo actual esto nunca fue un problema porque
+las migraciones se aplicaron incrementalmente, una por una, a medida que
+se generaban. Pero contra una base **vacía** (un proyecto de Supabase
+nuevo, o cualquier base sin ninguna migración corrida todavía), las 12
+quedan pendientes a la vez, y la migración `0010_void_enum_value.sql`
+(`ALTER TYPE cash_movement_type ADD VALUE 'void'`) más `0011` (que usa ese
+valor nuevo en un índice y en checks) violan una restricción real de
+Postgres: no se puede usar un valor de enum recién agregado dentro de la
+misma transacción en la que se agregó. Usar **`npm run db:migrate:fresh`**
+en este caso — mismo resultado final, pero aplica las migraciones en dos
+tandas (separadas por un commit) usando `scripts/migrate-fresh.ts`. Ver
+`docs/DECISIONS.md` para el diagnóstico completo.
 
 ### Autorización (RLS)
 
@@ -262,7 +281,9 @@ pre-producción.
 **Predeploy**
 - [ ] `tsc`/`lint`/`test`/`build` en verde
 - [ ] Variables de entorno cargadas en la plataforma
-- [ ] Migraciones aplicadas contra la DB de producción
+- [ ] Migraciones aplicadas contra la DB de producción (`db:migrate`, o
+  `db:migrate:fresh` si es un proyecto de Supabase nuevo — ver
+  [Base de datos](#base-de-datos))
 - [ ] Bucket `barberos-private` creado y privado en el proyecto de Supabase de producción
 - [ ] Dominio de producción agregado a Supabase Auth → Redirect URLs
 
