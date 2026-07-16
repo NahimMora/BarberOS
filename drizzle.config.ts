@@ -14,6 +14,8 @@ export default defineConfig({
   dialect: 'postgresql',
   dbCredentials: {
     url: process.env.DIRECT_URL,
-    ssl: true,
+    // CI runs migrations against a plain postgres:16 service container
+    // (no TLS configured); Supabase (local dev + prod) always requires SSL.
+    ssl: process.env.CI ? false : true,
   },
 })

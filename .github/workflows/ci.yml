@@ -38,5 +38,58 @@ jobs:
       - name: Test
         run: npm run test
 
+      - name: Audit (dependencias de producción)
+        run: npm audit --omit=dev --audit-level=high
+
       - name: Build
         run: npm run build
+
+  rls:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      CI: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Roles/functions must exist before migrations run: several
+      # migrations do `TO authenticated`/`TO service_role` and
+      # `GRANT ... TO authenticated`, which fail if the role doesn't exist
+      # yet. See scripts/ci/bootstrap-rls-roles.sql for what this recreates
+      # and why (Supabase provisions it automatically on a real project).
+      - name: Bootstrap Supabase-equivalent roles
+        run: npx tsx scripts/ci/apply-sql.ts scripts/ci/bootstrap-rls-roles.sql
+
+      # Uses db:migrate:fresh, not db:migrate: a genuinely empty database
+      # has every migration pending at once, which fails on the ALTER TYPE
+      # ADD VALUE in migrations/0010 (see scripts/migrate-fresh.ts and
+      # docs/DECISIONS.md). db:migrate remains correct for the real
+      # Supabase project, where migrations already applied incrementally.
+      - name: Apply migrations (fresh-database-safe)
+        run: npm run db:migrate:fresh
+
+      - name: Grant service_role table access
+        run: npx tsx scripts/ci/apply-sql.ts scripts/ci/grant-service-role.sql
+
+      - name: RLS tests
+        run: npx vitest run src/test/integration/rls.test.ts
