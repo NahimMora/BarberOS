@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -35,6 +35,7 @@ import {
   Combobox,
   ComboboxInputGroup,
   ComboboxInput,
+  ComboboxTrigger,
   ComboboxTrailingIcon,
   ComboboxPopup,
   ComboboxItem,
@@ -68,6 +69,7 @@ import {
   X,
 } from 'lucide-react'
 import { calculateSaleTotals } from '@/lib/money/money'
+import { getLocalCalendarDate } from '@/lib/datetime/local-day-range'
 import { ClientFormDialog, type ClientRecord } from '@/components/clients/client-form-dialog'
 import { ClientQuickViewSheet } from '@/components/clients/client-quick-view-sheet'
 
@@ -110,13 +112,13 @@ const STATUS_LABELS: Record<string, string> = {
   no_show: 'No se presentó',
 }
 
-const STATUS_VARIANTS: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-  scheduled: 'outline',
-  confirmed: 'secondary',
-  in_progress: 'default',
-  completed: 'outline',
+const STATUS_VARIANTS: Record<string, 'success' | 'warning' | 'info' | 'destructive'> = {
+  scheduled: 'warning',
+  confirmed: 'success',
+  in_progress: 'info',
+  completed: 'success',
   cancelled: 'destructive',
-  no_show: 'secondary',
+  no_show: 'destructive',
 }
 
 const STATUS_ICONS: Record<string, typeof Clock> = {
@@ -152,8 +154,22 @@ function BarberTag({ barber }: { barber: Barber | undefined }) {
   )
 }
 
+const AGENDA_TIME_ZONE = 'America/Argentina/Buenos_Aires'
+
 function toLocalDateString(date: Date): string {
-  return date.toISOString().slice(0, 10)
+  return getLocalCalendarDate(date, AGENDA_TIME_ZONE)
+}
+
+/**
+ * Never falls back to the raw client id — an unnamed, unreachable client
+ * still needs a human label instead of leaking its UUID into the UI.
+ */
+function getClientLabel(client: ClientRecord): string {
+  const fullName = [client.firstName, client.lastName].filter(Boolean).join(' ').trim()
+  if (fullName) return fullName
+  if (client.whatsappE164) return client.whatsappE164
+  if (client.whatsappRaw) return client.whatsappRaw
+  return 'Cliente sin nombre'
 }
 
 export default function AgendaPage() {
@@ -169,18 +185,24 @@ export default function AgendaPage() {
   const [branches, setBranches] = useState<Branch[]>([])
   const [barbers, setBarbers] = useState<Barber[]>([])
   const [currentUser, setCurrentUser] = useState<AgendaContext['user'] | null>(null)
+  const [isLoadingBranches, setIsLoadingBranches] = useState(false)
+  const [isLoadingBarbers, setIsLoadingBarbers] = useState(false)
+  const [isLoadingServices, setIsLoadingServices] = useState(false)
   const [barberId, setBarberId] = useState('')
   const [branchId, setBranchId] = useState('')
   const [selectedClient, setSelectedClient] = useState(ANONYMOUS_CLIENT)
+  const [selectedClientRecord, setSelectedClientRecord] = useState<ClientRecord | null>(null)
   const [clientQuery, setClientQuery] = useState('')
   const [clientResults, setClientResults] = useState<ClientRecord[]>([])
-  const [clientSearchLoading, setClientSearchLoading] = useState(false)
+  const [isLoadingClients, setIsLoadingClients] = useState(false)
   const [createClientOpen, setCreateClientOpen] = useState(false)
   const [selectedService, setSelectedService] = useState('')
   const [slots, setSlots] = useState<Slot[]>([])
   const [selectedSlot, setSelectedSlot] = useState('')
-  const [loadingSlots, setLoadingSlots] = useState(false)
+  const [isLoadingSlots, setIsLoadingSlots] = useState(false)
   const [saving, setSaving] = useState(false)
+  const slotsRequestRef = useRef(0)
+  const clientsRequestRef = useRef(0)
 
   // Client quick-view
   const [quickViewClientId, setQuickViewClientId] = useState<string | null>(null)
@@ -222,32 +244,69 @@ export default function AgendaPage() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { void fetchAppointments() }, [fetchAppointments])
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const [servicesResponse, contextResponse] = await Promise.all([
-          fetch('/api/services'),
-          fetch('/api/agenda-context'),
-        ])
-        if (servicesResponse.ok) setServices(await servicesResponse.json())
-        if (contextResponse.ok) {
-          const context: AgendaContext = await contextResponse.json()
-          setBranches(context.branches ?? [])
-          setBarbers(context.barbers ?? [])
-          setCurrentUser(context.user)
-        }
-      } catch {
-        // El listado diario igual funciona; esto solo enriquece la columna de barbero y el detalle de cobro.
+  // Single loader for the shared reference data (branches/barbers/services),
+  // used both on page mount and to feed the "Nuevo turno" dialog — fetched
+  // once and reused, instead of re-fetching every time the dialog opens.
+  const loadServicesAndContext = useCallback(async () => {
+    setIsLoadingServices(true)
+    setIsLoadingBranches(true)
+    setIsLoadingBarbers(true)
+    try {
+      const [servicesResponse, contextResponse] = await Promise.all([
+        fetch('/api/services'),
+        fetch('/api/agenda-context'),
+      ])
+      if (servicesResponse.ok) setServices(await servicesResponse.json())
+      if (contextResponse.ok) {
+        const context: AgendaContext = await contextResponse.json()
+        setBranches(context.branches ?? [])
+        setBarbers(context.barbers ?? [])
+        setCurrentUser(context.user)
       }
-    })()
+    } catch {
+      // El listado diario igual funciona; esto solo enriquece la columna de barbero y el detalle de cobro.
+    } finally {
+      setIsLoadingServices(false)
+      setIsLoadingBranches(false)
+      setIsLoadingBarbers(false)
+    }
   }, [])
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { void loadServicesAndContext() }, [loadServicesAndContext])
+
+  // Applies default branch/barber selection reactively once the dialog is
+  // open and reference data is available — works whether that data was
+  // already loaded before the dialog opened or arrives afterward, without
+  // the dialog itself having to trigger (and duplicate) a fetch.
+  useEffect(() => {
+    if (!newOpen || branchId || branches.length === 0) return
+    const defaultBranch = branches[0]?.id ?? ''
+    const defaultBarber = currentUser?.role === 'barber'
+      ? currentUser.id
+      : barbers.find((barber) => barber.branchId === defaultBranch)?.id ?? ''
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setBranchId(defaultBranch)
+    setBarberId(defaultBarber)
+  }, [newOpen, branchId, branches, barbers, currentUser])
 
   const barberById = useMemo(() => new Map(barbers.map((barber) => [barber.id, barber])), [barbers])
   const serviceById = useMemo(() => new Map(services.map((service) => [service.id, service])), [services])
-  const barbersInView = useMemo(
-    () => barbers.filter((barber) => appointments.some((appointment) => appointment.barberId === barber.id)),
-    [barbers, appointments],
-  )
+  const barbersInView = useMemo(() => {
+    // /api/agenda-context returns one row per (barber, branch) pair — a
+    // barber assigned to several branches appears once per branch. That's
+    // needed where callers filter by a specific branchId first, but this
+    // list is branch-blind (just "has an appointment today"), so it must
+    // dedupe by id itself or the same barber renders as duplicate chips
+    // with colliding React keys.
+    const seen = new Set<string>()
+    return barbers.filter((barber) => {
+      if (seen.has(barber.id)) return false
+      if (!appointments.some((appointment) => appointment.barberId === barber.id)) return false
+      seen.add(barber.id)
+      return true
+    })
+  }, [barbers, appointments])
   const visibleAppointments = useMemo(
     () => (barberFilter === ALL_BARBERS ? appointments : appointments.filter((a) => a.barberId === barberFilter)),
     [appointments, barberFilter],
@@ -266,39 +325,65 @@ export default function AgendaPage() {
     ? calculateSaleTotals(chargeServices.map((item) => ({ quantity: 1, unitPrice: item.priceAtTime })), '0.00').subtotal
     : null
 
+  // Single source of truth for the client combobox's options — also used by
+  // itemToStringLabel below, so the selected value always resolves to a
+  // proper name/phone instead of falling back to the raw id.
+  const clientComboboxItems = useMemo(() => {
+    const pinned = selectedClientRecord && !clientResults.some((c) => c.id === selectedClientRecord.id)
+      ? [selectedClientRecord]
+      : []
+    return [
+      { value: ANONYMOUS_CLIENT, label: 'Walk-in (sin cliente)' },
+      ...pinned.map((client) => ({ value: client.id, label: getClientLabel(client) })),
+      ...clientResults.map((client) => ({ value: client.id, label: getClientLabel(client) })),
+    ]
+  }, [clientResults, selectedClientRecord])
+
   function changeDate(delta: number) {
     const d = new Date(date + 'T12:00:00Z')
     d.setUTCDate(d.getUTCDate() + delta)
     setDate(toLocalDateString(d))
   }
 
-  async function openNew() {
-    const [sr, contextResponse] = await Promise.all([
-      fetch('/api/services').then(r => r.json()),
-      fetch('/api/agenda-context').then(r => r.json() as Promise<AgendaContext>),
-    ])
-    setServices(sr)
-    setBranches(contextResponse.branches ?? [])
-    setBarbers(contextResponse.barbers ?? [])
-    setCurrentUser(contextResponse.user)
-    const defaultBranch = contextResponse.branches?.[0]?.id ?? ''
-    const defaultBarber = contextResponse.user?.role === 'barber'
-      ? contextResponse.user.id
-      : contextResponse.barbers?.find((barber) => barber.branchId === defaultBranch)?.id ?? ''
-    setBranchId(defaultBranch)
-    setBarberId(defaultBarber)
+  function openNew() {
+    // Open immediately — reference data (branches/barbers/services) is
+    // either already loaded from the page-mount fetch, or the default
+    // selection effect below will apply defaults once it arrives. No
+    // fetch is triggered here, so reopening the dialog never duplicates
+    // the mount-time request.
+    setSelectedService('')
     setSelectedClient(ANONYMOUS_CLIENT)
+    setSelectedClientRecord(null)
     setClientQuery('')
     setClientResults([])
-    setNewOpen(true)
     setSlots([])
     setSelectedSlot('')
+    setBranchId('')
+    setBarberId('')
+    setNewOpen(true)
   }
 
   function handleClientCreated(client: ClientRecord) {
     setClientResults((prev) => [client, ...prev.filter((c) => c.id !== client.id)])
     setSelectedClient(client.id)
+    setSelectedClientRecord(client)
+    // Reset the search query so the next time the dropdown opens it
+    // re-fetches the broad default list instead of staying pinned to
+    // whatever narrow (or empty) search led to creating this client.
+    setClientQuery('')
     setCreateClientOpen(false)
+  }
+
+  function handleClientSelect(value: string | null) {
+    const nextValue = value ?? ANONYMOUS_CLIENT
+    setSelectedClient(nextValue)
+    setClientQuery('')
+    if (nextValue === ANONYMOUS_CLIENT) {
+      setSelectedClientRecord(null)
+      return
+    }
+    const record = clientResults.find((c) => c.id === nextValue)
+    if (record) setSelectedClientRecord(record)
   }
 
   async function openCharge(appointment: Appointment) {
@@ -371,36 +456,63 @@ export default function AgendaPage() {
     }
   }
 
-  async function fetchSlots() {
-    if (!barberId || !branchId || !selectedService) return
+  // requestId guards against out-of-order responses: if barbero/sucursal/
+  // servicio/fecha change again before a slower request resolves, the
+  // stale response is discarded instead of overwriting fresher state or
+  // leaving isLoadingSlots stuck on true.
+  const fetchSlots = useCallback(async (requestId: number) => {
+    if (!barberId || !branchId || !selectedService) {
+      setSlots([])
+      setSelectedSlot('')
+      setIsLoadingSlots(false)
+      return
+    }
     const svc = services.find(s => s.id === selectedService)
-    if (!svc) return
-    setLoadingSlots(true)
+    if (!svc) {
+      setSlots([])
+      setSelectedSlot('')
+      setIsLoadingSlots(false)
+      return
+    }
+    setIsLoadingSlots(true)
     try {
       const res = await fetch(
         `/api/availability?barber_id=${barberId}&branch_id=${branchId}&date=${date}&duration_minutes=${svc.durationMinutes}`,
       )
       const data = await res.json()
+      if (slotsRequestRef.current !== requestId) return
       setSlots(data.slots ?? [])
+      setSelectedSlot('')
     } catch {
-      toast.error('Error al cargar slots')
+      if (slotsRequestRef.current === requestId) toast.error('Error al cargar slots')
     } finally {
-      setLoadingSlots(false)
+      if (slotsRequestRef.current === requestId) setIsLoadingSlots(false)
     }
-  }
+  }, [barberId, branchId, selectedService, date, services])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
-  useEffect(() => { if (newOpen) void fetchSlots() }, [barberId, branchId, selectedService, date])
+  useEffect(() => {
+    if (!newOpen) return
+    const requestId = ++slotsRequestRef.current
+    void fetchSlots(requestId)
+  }, [newOpen, fetchSlots])
 
   useEffect(() => {
     if (!newOpen) return
     const timer = setTimeout(() => {
-      setClientSearchLoading(true)
+      const requestId = ++clientsRequestRef.current
+      setIsLoadingClients(true)
       fetch(`/api/clients?q=${encodeURIComponent(clientQuery)}`)
         .then((res) => res.json())
-        .then((json) => setClientResults(json.data ?? []))
-        .catch(() => toast.error('Error al buscar clientes'))
-        .finally(() => setClientSearchLoading(false))
+        .then((json) => {
+          if (clientsRequestRef.current !== requestId) return
+          setClientResults(json.data ?? [])
+        })
+        .catch(() => {
+          if (clientsRequestRef.current === requestId) toast.error('Error al buscar clientes')
+        })
+        .finally(() => {
+          if (clientsRequestRef.current === requestId) setIsLoadingClients(false)
+        })
     }, 250)
     return () => clearTimeout(timer)
   }, [newOpen, clientQuery])
@@ -767,9 +879,10 @@ export default function AgendaPage() {
                     : barbers.find((barber) => barber.branchId === nextBranchId)?.id ?? ''
                   setBarberId(nextBarber)
                 }}
+                disabled={isLoadingBranches}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Seleccionar sucursal" />
+                  <SelectValue placeholder={isLoadingBranches ? 'Cargando sucursales…' : 'Seleccionar sucursal'} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
@@ -790,10 +903,10 @@ export default function AgendaPage() {
                   .map((barber) => ({ value: barber.id, label: barber.fullName }))}
                 value={barberId}
                 onValueChange={(value) => setBarberId(value ?? '')}
-                disabled={currentUser?.role === 'barber'}
+                disabled={currentUser?.role === 'barber' || isLoadingBarbers}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Seleccionar barbero" />
+                  <SelectValue placeholder={isLoadingBarbers ? 'Cargando barberos…' : 'Seleccionar barbero'} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
@@ -817,9 +930,10 @@ export default function AgendaPage() {
                 }))}
                 value={selectedService}
                 onValueChange={(v) => setSelectedService(v ?? '')}
+                disabled={isLoadingServices}
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar servicio" />
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder={isLoadingServices ? 'Cargando servicios…' : 'Seleccionar servicio'} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
@@ -847,34 +961,47 @@ export default function AgendaPage() {
                 </Button>
               </div>
               <Combobox
-                items={[
-                  { value: ANONYMOUS_CLIENT, label: 'Walk-in (sin cliente)' },
-                  ...clientResults.map((client) => ({
-                    value: client.id,
-                    label: [client.firstName, client.lastName].filter(Boolean).join(' ') || client.whatsappRaw || client.id,
-                  })),
-                ]}
+                items={clientComboboxItems}
+                itemToStringLabel={(value) =>
+                  clientComboboxItems.find((item) => item.value === value)?.label ?? ''
+                }
                 filter={null}
                 value={selectedClient}
-                onValueChange={(value) => setSelectedClient((value as string | null) ?? ANONYMOUS_CLIENT)}
-                onInputValueChange={(value) => setClientQuery(value)}
+                onValueChange={(value) => handleClientSelect(value as string | null)}
+                onInputValueChange={(value, eventDetails) => {
+                  // The input's text also changes when a value is selected
+                  // (synced to its label) or the field is reset — only a
+                  // genuine typed/pasted/cleared edit should drive a new
+                  // search, otherwise a just-selected client's own name
+                  // gets sent as the query and wipes out the results list.
+                  if (
+                    eventDetails.reason === 'input-change' ||
+                    eventDetails.reason === 'input-clear'
+                  ) {
+                    setClientQuery(value)
+                  }
+                }}
               >
                 <ComboboxInputGroup>
                   <ComboboxInput placeholder="Buscar por nombre o teléfono…" />
-                  <ComboboxTrailingIcon loading={clientSearchLoading} />
+                  <ComboboxTrigger aria-label="Mostrar clientes">
+                    <ComboboxTrailingIcon loading={isLoadingClients} />
+                  </ComboboxTrigger>
                 </ComboboxInputGroup>
                 <ComboboxPopup>
                   <ComboboxItem value={ANONYMOUS_CLIENT}>Walk-in (sin cliente)</ComboboxItem>
-                  {clientResults.map((c) => (
-                    <ComboboxItem key={c.id} value={c.id}>
-                      <span className="font-medium">
-                        {[c.firstName, c.lastName].filter(Boolean).join(' ') || c.whatsappRaw || 'Sin nombre'}
-                      </span>
-                      {c.whatsappRaw ? (
-                        <span className="text-xs text-muted-foreground">{c.whatsappRaw}</span>
-                      ) : null}
-                    </ComboboxItem>
-                  ))}
+                  {clientResults.map((c) => {
+                    const hasName = Boolean(c.firstName || c.lastName)
+                    const phone = c.whatsappE164 ?? c.whatsappRaw
+                    return (
+                      <ComboboxItem key={c.id} value={c.id}>
+                        <span className="font-medium">{getClientLabel(c)}</span>
+                        {hasName && phone ? (
+                          <span className="text-xs text-muted-foreground">{phone}</span>
+                        ) : null}
+                      </ComboboxItem>
+                    )
+                  })}
                   <ComboboxEmpty>
                     {clientQuery.trim() ? 'Sin resultados' : 'Escribí para buscar un cliente'}
                   </ComboboxEmpty>
@@ -883,7 +1010,7 @@ export default function AgendaPage() {
             </div>
             <div className="space-y-1">
               <Label>Horario disponible</Label>
-              {loadingSlots ? (
+              {isLoadingSlots ? (
                 <p className="text-sm text-muted-foreground">Cargando slots…</p>
               ) : slots.length === 0 ? (
                 <p className="text-sm text-muted-foreground">

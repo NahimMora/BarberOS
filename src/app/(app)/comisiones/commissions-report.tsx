@@ -81,6 +81,12 @@ type Report = {
   entries: Entry[]
 }
 
+function commissionStatusBadge(status: Entry['status']) {
+  if (status === 'paid') return { variant: 'success' as const, label: 'Liquidada' }
+  if (status === 'cancelled') return { variant: 'destructive' as const, label: 'Anulada' }
+  return { variant: 'warning' as const, label: 'Pendiente' }
+}
+
 function totalsFor(summary: Summary[]) {
   return summary.reduce((totals, row) => ({
     sales: totals.sales + row.salesCount,
@@ -256,7 +262,7 @@ export function CommissionsReport({ role }: { role: 'admin' | 'barber' }) {
                         <TableCell>{formatArs(row.baseAmount)}</TableCell>
                         <TableCell className="font-bold">{formatArs(row.commissionAmount)}</TableCell>
                         <TableCell>
-                          <Badge variant={row.pendingAmount === '0.00' ? 'secondary' : 'outline'}>
+                          <Badge variant={row.pendingAmount === '0.00' ? 'success' : 'warning'}>
                             {formatArs(row.pendingAmount)}
                           </Badge>
                         </TableCell>
@@ -285,7 +291,7 @@ export function CommissionsReport({ role }: { role: 'admin' | 'barber' }) {
                         <p className="font-heading text-xl font-semibold">{row.barberName}</p>
                         <p className="mt-1 text-xs text-muted-foreground">{row.salesCount} ventas pagadas</p>
                       </div>
-                      <Badge variant={row.pendingAmount === '0.00' ? 'secondary' : 'outline'}>
+                      <Badge variant={row.pendingAmount === '0.00' ? 'success' : 'warning'}>
                         {row.pendingAmount === '0.00' ? 'Liquidado' : 'Pendiente'}
                       </Badge>
                     </div>
@@ -400,8 +406,8 @@ export function CommissionsReport({ role }: { role: 'admin' | 'barber' }) {
                             <TableCell>{entry.rateSnapshot}%</TableCell>
                             <TableCell className="font-bold">{formatArs(entry.commissionAmount)}</TableCell>
                             <TableCell>
-                              <Badge variant={entry.status === 'paid' ? 'secondary' : 'outline'}>
-                                {entry.status === 'paid' ? 'Liquidada' : 'Pendiente'}
+                              <Badge variant={commissionStatusBadge(entry.status).variant}>
+                                {commissionStatusBadge(entry.status).label}
                               </Badge>
                             </TableCell>
                           </TableRow>
@@ -443,8 +449,8 @@ export function CommissionsReport({ role }: { role: 'admin' | 'barber' }) {
                         <TableCell>{entry.rateSnapshot}%</TableCell>
                         <TableCell className="font-bold">{formatArs(entry.commissionAmount)}</TableCell>
                         <TableCell>
-                          <Badge variant={entry.status === 'paid' ? 'secondary' : 'outline'}>
-                            {entry.status === 'paid' ? 'Liquidada' : 'Pendiente'}
+                          <Badge variant={commissionStatusBadge(entry.status).variant}>
+                            {commissionStatusBadge(entry.status).label}
                           </Badge>
                         </TableCell>
                       </TableRow>

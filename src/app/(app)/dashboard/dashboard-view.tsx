@@ -406,10 +406,7 @@ function BranchOverview({ data }: { data: DashboardData }) {
                   {branch.todayAppointments} turnos · {branch.todaySales} ventas hoy
                 </CardDescription>
                 <CardAction>
-                  <Badge
-                    variant={branch.cashStatus === 'open' ? 'default' : 'outline'}
-                    className={branch.cashStatus === 'open' ? 'bg-success text-success-foreground' : undefined}
-                  >
+                  <Badge variant={branch.cashStatus === 'open' ? 'success' : 'outline'}>
                     {branch.cashStatus === 'open' ? 'Caja abierta' : 'Caja cerrada'}
                   </Badge>
                 </CardAction>
@@ -442,20 +439,21 @@ function BranchOverview({ data }: { data: DashboardData }) {
   )
 }
 
+const appointmentStatusVariants = {
+  scheduled: 'warning',
+  confirmed: 'success',
+  in_progress: 'info',
+  completed: 'success',
+  cancelled: 'destructive',
+  no_show: 'destructive',
+} as const
+
 function AppointmentBadge({
   status,
 }: {
   status: DashboardData['agenda'][number]['status']
 }) {
-  const variant = status === 'completed'
-    ? 'secondary'
-    : status === 'no_show'
-      ? 'destructive'
-      : status === 'in_progress'
-        ? 'default'
-        : 'outline'
-
-  return <Badge variant={variant}>{appointmentLabels[status]}</Badge>
+  return <Badge variant={appointmentStatusVariants[status]}>{appointmentLabels[status]}</Badge>
 }
 
 function formatDateLabel(date: string): string {

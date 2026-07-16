@@ -356,8 +356,8 @@ export function OperationConsole() {
   )
 
   const visibleTimeOff = useMemo(
-    () => timeOff.filter((row) => row.barberId === selectedBarberId),
-    [timeOff, selectedBarberId],
+    () => timeOff.filter((row) => row.barberId === timeOffForm.barberId),
+    [timeOff, timeOffForm.barberId],
   )
 
   const loadData = useCallback(async () => {

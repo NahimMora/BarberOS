@@ -296,7 +296,7 @@ function EventRecord({ event }: { event: ControlEvent }) {
 function LevelBadge({ level }: { level: EventLevel }) {
   const label = level === 'info' ? 'Info' : level === 'warn' ? 'Advertencia' : 'Error'
   return (
-    <Badge variant={level === 'error' ? 'destructive' : level === 'warn' ? 'secondary' : 'outline'}>
+    <Badge variant={level === 'error' ? 'destructive' : level === 'warn' ? 'warning' : 'info'}>
       {label}
     </Badge>
   )

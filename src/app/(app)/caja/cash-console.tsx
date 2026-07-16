@@ -890,7 +890,7 @@ export function CashConsole() {
           </Field>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCloseOpen(false)}>Volver</Button>
-            <Button variant="destructive" disabled={closing} onClick={() => void closeCash()}>
+            <Button variant="destructive" disabled={closing || !countedCash.trim()} onClick={() => void closeCash()}>
               <LockKeyhole />
               {closing ? 'Cerrando...' : 'Confirmar cierre'}
             </Button>
