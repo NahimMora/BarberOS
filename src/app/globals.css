@@ -55,23 +55,23 @@
 }
 
 :root {
-  --background: #f6f1e8;
+  --background: #f7f8f6;
   --foreground: #2a2318;
-  --card: #fffcf5;
+  --card: #ffffff;
   --card-foreground: #2a2318;
-  --popover: #fffcf5;
+  --popover: #ffffff;
   --popover-foreground: #2a2318;
   --primary: oklch(0.335 0.055 157);
   --primary-foreground: #fbf8f1;
-  --secondary: #efe6d3;
+  --secondary: #f1f3f0;
   --secondary-foreground: #3a3020;
-  --muted: #efe8d9;
+  --muted: #f4f5f2;
   --muted-foreground: #6e6153;
-  --accent: oklch(0.84 0.07 78);
+  --accent: #edf2ee;
   --accent-foreground: #34290f;
   --destructive: oklch(0.55 0.18 27);
-  --border: #e6dcc5;
-  --input: #ded0b2;
+  --border: #e4e8e3;
+  --input: #d9dfda;
   --ring: oklch(0.46 0.07 155);
   --success: oklch(0.48 0.11 151);
   --success-foreground: #fbf8f1;
@@ -158,13 +158,6 @@
       var(--card) 6px 12px
     );
     background-size: 17px 17px;
-  }
-
-  .brand-mark-grid {
-    background-image:
-      linear-gradient(90deg, transparent 47%, color-mix(in oklch, var(--primary-foreground) 14%, transparent) 47% 53%, transparent 53%),
-      linear-gradient(transparent 47%, color-mix(in oklch, var(--primary-foreground) 14%, transparent) 47% 53%, transparent 53%);
-    background-size: 9px 9px;
   }
 
   .page-enter {

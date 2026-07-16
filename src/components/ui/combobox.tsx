@@ -16,7 +16,7 @@ function ComboboxInputGroup({
     <ComboboxPrimitive.InputGroup
       data-slot="combobox-input-group"
       className={cn(
-        "relative flex w-full items-center gap-1.5 rounded-lg border border-input bg-transparent transition-colors focus-within:border-ring focus-within:ring-4 focus-within:ring-ring/40 dark:bg-input/30",
+        "relative flex w-full items-center gap-1.5 rounded-[min(var(--radius-md),12px)] border border-input bg-transparent transition-colors focus-within:border-ring focus-within:ring-4 focus-within:ring-ring/40 dark:bg-input/30",
         className
       )}
       {...props}
@@ -24,10 +24,17 @@ function ComboboxInputGroup({
   )
 }
 
-function ComboboxInput({ className, ...props }: ComboboxPrimitive.Input.Props) {
+function ComboboxInput({ className, onFocus, ...props }: ComboboxPrimitive.Input.Props) {
   return (
     <ComboboxPrimitive.Input
       data-slot="combobox-input"
+      onFocus={(event) => {
+        onFocus?.(event)
+        // Select the current text (usually the selected item's label, e.g.
+        // "Walk-in (sin cliente)") so the first keystroke replaces it
+        // instead of appending to it.
+        event.currentTarget.select()
+      }}
       className={cn(
         "h-11 w-full min-w-0 rounded-lg bg-transparent py-2 pr-9 pl-3.5 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50",
         className
@@ -37,6 +44,23 @@ function ComboboxInput({ className, ...props }: ComboboxPrimitive.Input.Props) {
   )
 }
 
+function ComboboxTrigger({
+  className,
+  ...props
+}: ComboboxPrimitive.Trigger.Props) {
+  return (
+    <ComboboxPrimitive.Trigger
+      data-slot="combobox-trigger"
+      className={cn(
+        "absolute right-3 top-1/2 flex -translate-y-1/2 items-center text-muted-foreground outline-none hover:text-foreground disabled:pointer-events-none disabled:opacity-50",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+/** Icon-only content for ComboboxTrigger — not interactive on its own. */
 function ComboboxTrailingIcon({
   loading,
   className,
@@ -44,20 +68,10 @@ function ComboboxTrailingIcon({
   loading?: boolean
   className?: string
 }) {
-  return (
-    <div
-      className={cn(
-        "pointer-events-none absolute right-3 top-1/2 flex -translate-y-1/2 items-center text-muted-foreground",
-        className
-      )}
-      aria-hidden="true"
-    >
-      {loading ? (
-        <Loader2Icon className="size-4 animate-spin" />
-      ) : (
-        <ChevronDownIcon className="size-4" />
-      )}
-    </div>
+  return loading ? (
+    <Loader2Icon className={cn("size-4 animate-spin", className)} aria-hidden="true" />
+  ) : (
+    <ChevronDownIcon className={cn("size-4", className)} aria-hidden="true" />
   )
 }
 
@@ -154,6 +168,7 @@ export {
   Combobox,
   ComboboxInputGroup,
   ComboboxInput,
+  ComboboxTrigger,
   ComboboxTrailingIcon,
   ComboboxClear,
   ComboboxPopup,

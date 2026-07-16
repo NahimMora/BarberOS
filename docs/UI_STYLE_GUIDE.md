@@ -21,6 +21,39 @@ signature accent — the barber-pole stripe — confined to one place.
 > disagrees with this guide, treat the guide as the target and the screen as
 > a bug to fix, unless noted otherwise below.
 
+### Family resemblance with Escuela SaaS
+
+BarberOS and Escuela SaaS (a separate academy-management app, same author) are
+sibling products and are meant to read as a family — BarberOS in its own warm
+green, Escuela SaaS in blue. This is a deliberate, scoped alignment of a few
+concrete conventions, not a shared codebase or component library — BarberOS
+keeps its shadcn/`@base-ui/react` architecture throughout. What was aligned:
+
+- **Table headers** are uppercase, tracked, small, and muted (`TableHead` in
+  `src/components/ui/table.tsx`), matching Escuela SaaS's `th` treatment.
+- **Page titles** are heavy (`font-black`) with tight tracking
+  (`src/components/page-header.tsx`), echoing Escuela SaaS's confident
+  headline weight — the eyebrow and stripe-accent above the title stay
+  BarberOS's own signature, unchanged.
+- **Status badges** use real semantic tone (`success`/`warning`/`info`/
+  `destructive` variants in `src/components/ui/badge.tsx`, soft-tinted
+  backgrounds against BarberOS's own `--success`/`--warning`/`--info`
+  tokens) instead of borrowing neutral `outline`/`secondary` variants to
+  fake status color — see the Status section below.
+- **A role-info popover** in the header (`RoleInfoPopover` in
+  `src/components/app-header.tsx`, built on a new `src/components/ui/
+  popover.tsx` wrapping `@base-ui/react/popover`) shows what the signed-in
+  role can and can't do, mirroring Escuela SaaS's own role-capabilities
+  popover — genuinely useful here too, given BarberOS's own role model.
+- **Form-control corners** (`Button`, `Input`, `Textarea`, `SelectTrigger`
+  default size, `ComboboxInputGroup`) are clamped tighter via the same
+  `rounded-[min(var(--radius-md),Npx)]` pattern the smaller button sizes
+  already used, closer to Escuela SaaS's crisper button/field proportions.
+  Cards, dialogs, sheets, and popup surfaces keep their larger, generous
+  radius — that scale already matched Escuela SaaS's own card/modal
+  proportions, and Soft Studio's flat-card-no-shadow rule (Shape and Depth,
+  below) is intentionally unchanged.
+
 ## Experience Principles
 
 - **Operational clarity:** the next action and current status must be obvious.
@@ -35,14 +68,21 @@ signature accent — the barber-pole stripe — confined to one place.
 
 ### Color
 
-- **Background (canvas):** warm off-white, `#F6F1E8`. Never pure white.
-- **Card/surface:** `#FFFCF5` — barely lighter than the canvas, so cards read
-  as a subtle lift, not a hard panel.
+> **Fase 1 update:** the palette below was lightened and neutralized —
+> canvas and cards moved from a warm cream/gold "artisan workshop" tone to a
+> near-white, neutral-green-gray one, closer to holasalta.com's lightness.
+> This pass only touched color tokens; it does not resolve dashboard
+> density, hierarchy, or spacing — that is a separate, later pass.
+
+- **Background (canvas):** near-white, cool-neutral, `#F7F8F6`.
+- **Card/surface:** pure white, `#FFFFFF` — reads as a clear lift off the
+  canvas, not a hard panel.
 - **Ink (foreground):** `#2A2318`, a warm charcoal — legible and softer than
   pure black.
 - **Primary:** deep warm green (`oklch(0.335 0.055 157)`), used for primary
-  actions and trusted state.
-- **Accent:** muted warm gold, used sparingly for focus and highlighted context.
+  actions and trusted state — unchanged, the brand invariant.
+- **Accent:** soft neutral (`#EDF2EE`), used sparingly for hover/focus/
+  selected states in menus and selects. No longer a gold decorative accent.
 - **Destructive:** brick red, reserved for cancellation, voiding, and other
   irreversible actions.
 - **Success / warning / info:** semantic tokens only — never arbitrary
@@ -50,6 +90,7 @@ signature accent — the barber-pole stripe — confined to one place.
 - **Sidebar (desktop):** its own dark, desaturated palette — a muted
   near-black green (`oklch(0.24 0.02 155)` in light mode), not the app's
   light canvas. It reads as a distinct, calmer surface, not an inverted card.
+  Unchanged by the Fase 1 lightening pass.
 
 All of the above are CSS custom properties in `src/app/globals.css`
 (`--background`, `--card`, `--primary`, `--sidebar*`, etc.), re-exposed as
@@ -92,11 +133,10 @@ hardcoded hex/oklch values.
   and shadow, and don't reach for `elevated` just to make a card "pop"
   decoratively.
 - **No page-level textures or background grids.** The previous paper-texture
-  and grid-pattern treatments are removed from page/card backgrounds.
-  *Known exception:* `BrandMark`'s icon badge still applies a faint grid
-  micro-texture via the `.brand-mark-grid` utility class in `globals.css`.
-  This wasn't caught in the Soft Studio pass — flagged here as a minor,
-  non-blocking cleanup rather than documented as intentional.
+  and grid-pattern treatments are removed from page/card backgrounds. The
+  `BrandMark` icon badge's faint grid micro-texture (`.brand-mark-grid`) was
+  removed in the Fase 1 lightening pass — it added no legibility or
+  recognition value at the badge's ~40px size.
 
 ## Layout
 
@@ -155,6 +195,11 @@ to reuse.
 ### Status
 
 - Status is always text plus a semantic badge; color alone is insufficient.
+  Use the `Badge` component's real semantic variants (`success`, `warning`,
+  `info`, `destructive`) for genuine severity/lifecycle states — never
+  `outline`/`secondary` as a stand-in for status color. Reserve `outline`/
+  `secondary` for neutral or binary states (active/inactive toggles, period
+  labels) that aren't a severity at all.
 - Appointment transitions use consistent verbs:
   `Confirmar`, `Iniciar`, `Completar`, `Reprogramar`, `Cancelar`.
 - Cash and payment statuses display method and amount independently.
@@ -173,8 +218,9 @@ to reuse.
   emits a canonical decimal string, so it's a drop-in replacement wherever
   a plain `Input` was taking a money value.
 - Status is always text plus a semantic badge or icon — when two states
-  would otherwise share the same badge variant (e.g. two "in-flight"
-  appointment statuses), add a small icon rather than reusing an
+  legitimately share the same badge variant (e.g. `confirmed` and
+  `completed` are both a genuine `success` tone, just at different stages
+  of the same appointment), add a small icon rather than reusing an
   unlabeled color to tell them apart (see `StatusBadge` in
   `src/app/(app)/agenda/page.tsx`).
 

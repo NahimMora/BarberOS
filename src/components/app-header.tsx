@@ -1,15 +1,17 @@
 'use client'
 
-import { LogOut } from 'lucide-react'
+import { Info, LogOut } from 'lucide-react'
 import { BrandMark } from '@/components/brand-mark'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { createClient } from '@/lib/supabase/client'
 import type { AppUser } from '@/lib/auth/get-session'
 
@@ -17,6 +19,60 @@ const roleLabel: Record<AppUser['role'], string> = {
   admin: 'Admin',
   receptionist: 'Recepcionista',
   barber: 'Barbero',
+}
+
+const roleCapabilities: Record<AppUser['role'], string[]> = {
+  admin: [
+    'Agenda, clientes y turnos de todas las sucursales',
+    'Caja: apertura, cierre y anulación de ventas',
+    'Operación: equipo, servicios y disponibilidad',
+    'Comisiones: liquidación por barbero',
+    'Control y exportaciones',
+  ],
+  receptionist: [
+    'Agenda, clientes y turnos',
+    'Caja: apertura, cierre y cobros',
+    'Exportaciones',
+    'Sin acceso a operación, comisiones ni control',
+  ],
+  barber: [
+    'Tu agenda y tus turnos',
+    'Clientes',
+    'Tus propias comisiones',
+    'Sin acceso a caja, operación, control ni exportaciones',
+  ],
+}
+
+function RoleInfoPopover({ role }: { role: AppUser['role'] }) {
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Qué puede hacer ${roleLabel[role]}`}
+            className="text-muted-foreground"
+          />
+        }
+      >
+        <Info />
+      </PopoverTrigger>
+      <PopoverContent align="end">
+        <p className="text-xs font-bold uppercase tracking-wide text-primary/75">Tu rol</p>
+        <p className="mt-1 font-heading text-base font-bold">{roleLabel[role]}</p>
+        <p className="mt-1 text-xs text-muted-foreground">Qué podés hacer con este usuario:</p>
+        <ul className="mt-3 flex flex-col gap-2 text-sm">
+          {roleCapabilities[role].map((item) => (
+            <li key={item} className="flex gap-2">
+              <span aria-hidden="true" className="font-bold text-primary">·</span>
+              <span>{item}</span>
+            </li>
+          ))}
+        </ul>
+      </PopoverContent>
+    </Popover>
+  )
 }
 
 export function AppHeader({ user }: { user: AppUser }) {
@@ -36,6 +92,7 @@ export function AppHeader({ user }: { user: AppUser }) {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
+    timeZone: 'America/Argentina/Buenos_Aires',
   }).format(new Date())
 
   return (
@@ -43,8 +100,9 @@ export function AppHeader({ user }: { user: AppUser }) {
       <div className="flex items-center gap-4">
         <BrandMark compact className="md:hidden" />
         <div className="hidden flex-col sm:flex">
-          <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+          <span className="flex items-center gap-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">
             {roleLabel[user.role]}
+            <RoleInfoPopover role={user.role} />
           </span>
           <span className="text-sm font-semibold capitalize">{today}</span>
         </div>

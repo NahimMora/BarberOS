@@ -4,13 +4,13 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   CalendarDays,
-  ChartNoAxesCombined,
-  DollarSign,
   FileSpreadsheet,
   House,
+  Landmark,
+  Settings,
   ShieldCheck,
-  Settings2,
   Users,
+  WalletCards,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { BrandMark } from '@/components/brand-mark'
@@ -29,9 +29,9 @@ const navItems: {
   { href: '/dashboard', label: 'Inicio', icon: House, roles: ['admin', 'receptionist', 'barber'] as Role[] },
   { href: '/agenda', label: 'Agenda', icon: CalendarDays, roles: ['admin', 'receptionist', 'barber'] as Role[] },
   { href: '/clientes', label: 'Clientes', icon: Users, roles: ['admin', 'receptionist', 'barber'] as Role[] },
-  { href: '/operacion', label: 'Operación', icon: Settings2, roles: ['admin'] as Role[], mobile: false },
-  { href: '/caja', label: 'Caja', icon: DollarSign, roles: ['admin', 'receptionist'] as Role[] },
-  { href: '/comisiones', label: 'Comisiones', icon: ChartNoAxesCombined, roles: ['admin', 'barber'] as Role[] },
+  { href: '/operacion', label: 'Operación', icon: Settings, roles: ['admin'] as Role[], mobile: false },
+  { href: '/caja', label: 'Caja', icon: WalletCards, roles: ['admin', 'receptionist'] as Role[] },
+  { href: '/comisiones', label: 'Comisiones', icon: Landmark, roles: ['admin', 'barber'] as Role[] },
   { href: '/control', label: 'Control', icon: ShieldCheck, roles: ['admin'] as Role[], mobile: false },
   { href: '/exportaciones', label: 'Exportar', icon: FileSpreadsheet, roles: ['admin', 'receptionist'] as Role[], mobile: false },
 ]

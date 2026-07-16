@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 export function BrandMark({ compact = false, className }: { compact?: boolean; className?: string }) {
   return (
     <div className={cn('flex items-center gap-3', className)}>
-      <div className="brand-mark-grid flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
+      <div className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
         <Scissors className="size-5" aria-hidden="true" />
       </div>
       {compact ? null : (
