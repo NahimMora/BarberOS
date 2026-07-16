@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { zodErrorMessage } from '@/lib/validation/zod-error'
 import { and, eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { barberProfiles, files, users } from '@/db/schema'
@@ -93,7 +94,7 @@ export async function PATCH(
   const { userId } = await params
   const parsed = profileSchema.safeParse(await request.json())
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+    return NextResponse.json({ error: zodErrorMessage(parsed.error) }, { status: 400 })
   }
 
   const [profile] = await db

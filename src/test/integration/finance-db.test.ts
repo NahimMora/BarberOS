@@ -5,6 +5,11 @@ import postgres, { type Sql } from 'postgres'
 const connectionString = process.env.DIRECT_URL
 const describeDatabase = connectionString ? describe : describe.skip
 
+// Sentinel used to force a rollback on a transaction whose insert is expected
+// to succeed — without it, `sql.begin` commits successful callbacks and
+// leaves permanent fixture rows in the database on every test run.
+class IntentionalRollback extends Error {}
+
 describeDatabase('finance PostgreSQL constraints', () => {
   let sql: Sql
   let organizationId: string
@@ -196,9 +201,10 @@ describeDatabase('finance PostgreSQL constraints', () => {
             'Cliente se arrepintió'
           )
         `
+        throw new IntentionalRollback()
       })
     } catch (thrown) {
-      error = thrown
+      if (!(thrown instanceof IntentionalRollback)) error = thrown
     }
 
     expect(error).toBeUndefined()

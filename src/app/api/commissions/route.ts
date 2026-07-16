@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { zodErrorMessage } from '@/lib/validation/zod-error'
 import { and, asc, eq, inArray } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import {
@@ -15,6 +16,7 @@ import {
 import { getSession } from '@/lib/auth/get-session'
 import { canViewCommissions } from '@/lib/finance/authorization'
 import { formatCents, parseMoney } from '@/lib/money/money'
+import { logger } from '@/lib/observability/logger'
 
 const periodSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/)
 
@@ -108,9 +110,11 @@ export async function GET(req: Request) {
       paidAmount: 0n,
     }
     const amount = parseMoney(row.commissionAmount)
-    current.salesCount += 1
-    current.baseAmount += parseMoney(row.baseAmount)
-    current.commissionAmount += amount
+    if (row.status !== 'cancelled') {
+      current.salesCount += 1
+      current.baseAmount += parseMoney(row.baseAmount)
+      current.commissionAmount += amount
+    }
     if (row.status === 'pending') current.pendingAmount += amount
     if (row.status === 'paid') current.paidAmount += amount
     grouped.set(row.barberId, current)
@@ -155,7 +159,7 @@ export async function POST(req: Request) {
 
   const parsed = settleSchema.safeParse(await req.json())
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+    return NextResponse.json({ error: zodErrorMessage(parsed.error) }, { status: 400 })
   }
 
   const { barberId, period } = parsed.data
@@ -170,61 +174,72 @@ export async function POST(req: Request) {
     .limit(1)
   if (!barber) return NextResponse.json({ error: 'Barbero no encontrado' }, { status: 404 })
 
-  const result = await db.transaction(async (tx) => {
-    const pendingRows = await tx
-      .select({
-        id: commissions.id,
-        commissionAmount: commissions.commissionAmount,
+  try {
+    const result = await db.transaction(async (tx) => {
+      const pendingRows = await tx
+        .select({
+          id: commissions.id,
+          commissionAmount: commissions.commissionAmount,
+        })
+        .from(commissions)
+        .where(and(
+          eq(commissions.organizationId, user.organizationId),
+          eq(commissions.barberId, barberId),
+          eq(commissions.period, period),
+          eq(commissions.status, 'pending'),
+        ))
+        .for('update')
+
+      if (pendingRows.length === 0) {
+        return { updatedCount: 0, amount: '0.00' }
+      }
+
+      const amount = pendingRows.reduce(
+        (total, row) => total + parseMoney(row.commissionAmount),
+        0n,
+      )
+      await tx
+        .update(commissions)
+        .set({ status: 'paid', updatedAt: new Date() })
+        .where(inArray(commissions.id, pendingRows.map((row) => row.id)))
+
+      await tx.insert(auditLogs).values({
+        organizationId: user.organizationId,
+        userId: user.id,
+        action: 'commission.settled',
+        entity: 'users',
+        entityId: barberId,
+        diff: {
+          period,
+          commissionIds: pendingRows.map((row) => row.id),
+          updatedCount: pendingRows.length,
+          amount: formatCents(amount),
+        },
       })
-      .from(commissions)
-      .where(and(
-        eq(commissions.organizationId, user.organizationId),
-        eq(commissions.barberId, barberId),
-        eq(commissions.period, period),
-        eq(commissions.status, 'pending'),
-      ))
-      .for('update')
+      await tx.insert(domainEvents).values({
+        organizationId: user.organizationId,
+        eventType: 'commission.settled',
+        payload: {
+          barberId,
+          period,
+          updatedCount: pendingRows.length,
+          amount: formatCents(amount),
+        },
+        occurredAt: new Date(),
+      })
 
-    if (pendingRows.length === 0) {
-      return { updatedCount: 0, amount: '0.00' }
-    }
-
-    const amount = pendingRows.reduce(
-      (total, row) => total + parseMoney(row.commissionAmount),
-      0n,
-    )
-    await tx
-      .update(commissions)
-      .set({ status: 'paid', updatedAt: new Date() })
-      .where(inArray(commissions.id, pendingRows.map((row) => row.id)))
-
-    await tx.insert(auditLogs).values({
-      organizationId: user.organizationId,
-      userId: user.id,
-      action: 'commission.settled',
-      entity: 'users',
-      entityId: barberId,
-      diff: {
-        period,
-        commissionIds: pendingRows.map((row) => row.id),
-        updatedCount: pendingRows.length,
-        amount: formatCents(amount),
-      },
-    })
-    await tx.insert(domainEvents).values({
-      organizationId: user.organizationId,
-      eventType: 'commission.settled',
-      payload: {
-        barberId,
-        period,
-        updatedCount: pendingRows.length,
-        amount: formatCents(amount),
-      },
-      occurredAt: new Date(),
+      return { updatedCount: pendingRows.length, amount: formatCents(amount) }
     })
 
-    return { updatedCount: pendingRows.length, amount: formatCents(amount) }
-  })
-
-  return NextResponse.json({ ...result, barberId, barberName: barber.fullName, period })
+    return NextResponse.json({ ...result, barberId, barberName: barber.fullName, period })
+  } catch (error) {
+    logger.error('unhandled error in POST /api/commissions', {
+      requestId: req.headers.get('x-request-id'),
+      organizationId: user.organizationId,
+      barberId,
+      period,
+      error,
+    })
+    return NextResponse.json({ error: 'Ocurrió un error inesperado' }, { status: 500 })
+  }
 }

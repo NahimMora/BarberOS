@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { zodErrorMessage } from '@/lib/validation/zod-error'
 import {
   and,
   desc,
@@ -38,7 +39,7 @@ export async function GET(request: Request) {
     Object.fromEntries(new URL(request.url).searchParams),
   )
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+    return NextResponse.json({ error: zodErrorMessage(parsed.error) }, { status: 400 })
   }
 
   const { kind, q, level, page, limit } = parsed.data

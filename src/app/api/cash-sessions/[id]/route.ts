@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { zodErrorMessage } from '@/lib/validation/zod-error'
+import { moneyAmountSchema } from '@/lib/validation/money'
 import { and, eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import {
@@ -17,10 +19,11 @@ import {
   MoneyError,
   parseMoney,
 } from '@/lib/money/money'
+import { logger } from '@/lib/observability/logger'
 
 const closeSchema = z.object({
   action: z.literal('close'),
-  countedCash: z.string().regex(/^\d{1,10}(?:\.\d{1,2})?$/),
+  countedCash: moneyAmountSchema,
 })
 
 export async function PATCH(
@@ -33,7 +36,7 @@ export async function PATCH(
 
   const parsed = closeSchema.safeParse(await req.json())
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+    return NextResponse.json({ error: zodErrorMessage(parsed.error) }, { status: 400 })
   }
 
   try {
@@ -143,6 +146,12 @@ export async function PATCH(
         { status: error instanceof FinanceError ? error.status : 400 },
       )
     }
-    throw error
+    logger.error('unhandled error in PATCH /api/cash-sessions/[id]', {
+      requestId: req.headers.get('x-request-id'),
+      organizationId: user.organizationId,
+      cashSessionId: id,
+      error,
+    })
+    return NextResponse.json({ error: 'Ocurrió un error inesperado' }, { status: 500 })
   }
 }

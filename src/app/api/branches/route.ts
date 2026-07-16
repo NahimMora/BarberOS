@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { zodErrorMessage } from '@/lib/validation/zod-error'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { branches } from '@/db/schema'
@@ -53,7 +54,7 @@ export async function POST(request: Request) {
 
   const parsed = branchSchema.safeParse(await request.json())
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+    return NextResponse.json({ error: zodErrorMessage(parsed.error) }, { status: 400 })
   }
 
   const [branch] = await db

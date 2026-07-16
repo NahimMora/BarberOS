@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { zodErrorMessage } from '@/lib/validation/zod-error'
+import { moneyAmountSchema } from '@/lib/validation/money'
 import { alias } from 'drizzle-orm/pg-core'
 import { and, desc, eq, gte, inArray, isNull, lt } from 'drizzle-orm'
 import { db } from '@/lib/db'
@@ -29,6 +31,7 @@ import { canChargeSale } from '@/lib/finance/authorization'
 import { getCommissionPeriod } from '@/lib/finance/commission-period'
 import { FinanceError } from '@/lib/finance/errors'
 import { getLocalDayUtcRange } from '@/lib/datetime/local-day-range'
+import { logger } from '@/lib/observability/logger'
 import {
   calculateCommission,
   calculateSaleTotals,
@@ -46,7 +49,7 @@ const saleSchema = z.object({
   barberId: z.string().uuid(),
   clientId: z.string().uuid().nullable().optional(),
   appointmentId: z.string().uuid().nullable().optional(),
-  discount: z.string().regex(/^\d{1,10}(?:\.\d{1,2})?$/).default('0.00'),
+  discount: moneyAmountSchema.default('0.00'),
   paymentMethod: z.enum(paymentMethods),
   paymentNote: z.string().trim().max(500).nullable().optional(),
   items: z.array(z.object({
@@ -158,7 +161,7 @@ export async function POST(req: Request) {
 
   const parsed = saleSchema.safeParse(await req.json())
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+    return NextResponse.json({ error: zodErrorMessage(parsed.error) }, { status: 400 })
   }
 
   const data = parsed.data
@@ -463,6 +466,11 @@ export async function POST(req: Request) {
     if (pgError.code === '23505' && pgError.constraint_name === 'sales_appointment_id_idx') {
       return NextResponse.json({ error: 'El turno ya fue cobrado' }, { status: 409 })
     }
-    throw error
+    logger.error('unhandled error in POST /api/sales', {
+      requestId: req.headers.get('x-request-id'),
+      organizationId: user.organizationId,
+      error,
+    })
+    return NextResponse.json({ error: 'Ocurrió un error inesperado' }, { status: 500 })
   }
 }

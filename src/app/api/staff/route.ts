@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { zodErrorMessage } from '@/lib/validation/zod-error'
 import { and, eq, isNull } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { barberProfiles, branches, userBranches, users } from '@/db/schema'
@@ -89,7 +90,7 @@ export async function POST(request: Request) {
   if ('response' in auth) return auth.response
   const parsed = createSchema.safeParse(await request.json())
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+    return NextResponse.json({ error: zodErrorMessage(parsed.error) }, { status: 400 })
   }
 
   const input = parsed.data

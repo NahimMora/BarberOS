@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { zodErrorMessage } from '@/lib/validation/zod-error'
+import { signedMoneyAmountSchema } from '@/lib/validation/money'
 import { and, eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import {
@@ -12,11 +14,12 @@ import { getSession } from '@/lib/auth/get-session'
 import { canManageCash } from '@/lib/finance/authorization'
 import { FinanceError } from '@/lib/finance/errors'
 import { MoneyError, parseMoney } from '@/lib/money/money'
+import { logger } from '@/lib/observability/logger'
 
 const movementSchema = z.object({
   cashSessionId: z.string().uuid(),
   type: z.enum(['income', 'expense', 'withdrawal', 'adjustment']),
-  amount: z.string().regex(/^-?\d{1,10}(?:\.\d{1,2})?$/),
+  amount: signedMoneyAmountSchema,
   paymentMethod: z.enum(['cash', 'transfer', 'card', 'mercadopago_manual', 'other']),
   note: z.string().trim().min(3).max(500),
 })
@@ -27,7 +30,7 @@ export async function POST(req: Request) {
 
   const parsed = movementSchema.safeParse(await req.json())
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+    return NextResponse.json({ error: zodErrorMessage(parsed.error) }, { status: 400 })
   }
 
   const data = parsed.data
@@ -125,6 +128,11 @@ export async function POST(req: Request) {
         { status: error instanceof FinanceError ? error.status : 400 },
       )
     }
-    throw error
+    logger.error('unhandled error in POST /api/cash-movements', {
+      requestId: req.headers.get('x-request-id'),
+      organizationId: user.organizationId,
+      error,
+    })
+    return NextResponse.json({ error: 'Ocurrió un error inesperado' }, { status: 500 })
   }
 }
