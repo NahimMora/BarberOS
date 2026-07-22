@@ -6,8 +6,10 @@ import {
   boolean,
   timestamp,
   jsonb,
+  smallint,
   index,
   uniqueIndex,
+  check,
 } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { organizations } from './organizations'
@@ -18,6 +20,10 @@ export const clients = pgTable('clients', {
   organizationId: uuid('organization_id').notNull().references(() => organizations.id),
   firstName: varchar('first_name', { length: 255 }),
   lastName: varchar('last_name', { length: 255 }),
+  nickname: varchar('nickname', { length: 100 }),
+  birthdayDay: smallint('birthday_day'),
+  birthdayMonth: smallint('birthday_month'),
+  profession: varchar('profession', { length: 150 }),
   whatsappRaw: varchar('whatsapp_raw', { length: 50 }),
   whatsappE164: varchar('whatsapp_e164', { length: 20 }),
   phoneAltRaw: varchar('phone_alt_raw', { length: 50 }),
@@ -27,6 +33,10 @@ export const clients = pgTable('clients', {
   tags: text('tags').array(),
   extraProfile: jsonb('extra_profile'),
   photoFileId: uuid('photo_file_id').references(() => files.id),
+  // Cuenta de la APP de clientes vinculada (auth.users.id de Supabase). Null
+  // para clientes que solo existen como registro cargado por el local.
+  authUserId: uuid('auth_user_id'),
+  phoneVerifiedAt: timestamp('phone_verified_at', { withTimezone: true }),
   consentData: boolean('consent_data').notNull().default(false),
   consentDataAt: timestamp('consent_data_at', { withTimezone: true }),
   consentWhatsapp: boolean('consent_whatsapp').notNull().default(false),
@@ -42,6 +52,11 @@ export const clients = pgTable('clients', {
     .on(t.organizationId, t.whatsappE164)
     .where(sql`${t.whatsappE164} IS NOT NULL`),
   index('clients_org_id_idx').on(t.organizationId),
+  uniqueIndex('clients_auth_user_id_idx')
+    .on(t.authUserId)
+    .where(sql`${t.authUserId} IS NOT NULL`),
+  check('clients_birthday_day_range', sql`${t.birthdayDay} IS NULL OR (${t.birthdayDay} BETWEEN 1 AND 31)`),
+  check('clients_birthday_month_range', sql`${t.birthdayMonth} IS NULL OR (${t.birthdayMonth} BETWEEN 1 AND 12)`),
 ])
 
 export type Client = typeof clients.$inferSelect

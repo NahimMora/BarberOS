@@ -5,6 +5,7 @@ import { files } from '@/db/schema'
 import { getSession } from '@/lib/auth/get-session'
 import { requireRole } from '@/lib/auth/require-role'
 import { createSupabaseAdminClient } from '@/lib/supabase/admin'
+import { getR2SignedDownloadUrl } from '@/lib/storage/r2'
 
 export async function GET(
   _request: Request,
@@ -29,6 +30,11 @@ export async function GET(
     )
     .limit(1)
   if (!record) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  if (record.storageProvider === 'r2') {
+    const url = await getR2SignedDownloadUrl(record.storagePath, 60)
+    return NextResponse.redirect(url)
+  }
 
   const supabaseAdmin = createSupabaseAdminClient()
   const { data, error } = await supabaseAdmin.storage

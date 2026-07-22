@@ -1,24 +1,21 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { zodErrorMessage } from '@/lib/validation/zod-error'
-import { eq, and, gte, inArray, isNull, lt } from 'drizzle-orm'
+import { eq, and, gte, inArray, lt } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import {
   appointments,
-  appointmentServices,
-  appointmentHistory,
-  auditLogs,
   clients,
-  domainEvents,
   organizationSettings,
   sales,
-  services,
-  userBranches,
-  users,
 } from '@/db/schema'
 import { getSession } from '@/lib/auth/get-session'
-import { validateNoOverlap, validateBarberAvailability, validateBranchWorkingHours, OverlapError, AvailabilityError } from '@/lib/appointments/validate'
-import { branches } from '@/db/schema'
+import {
+  createAppointment,
+  AppointmentInputError,
+  OverlapError,
+  AvailabilityError,
+} from '@/lib/appointments/create-appointment'
 import { getLocalDayUtcRange } from '@/lib/datetime/local-day-range'
 import { canCreateAppointment, hasBranchAccess } from '@/lib/auth/authorization'
 
@@ -127,30 +124,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const [barber] = await db
-    .select({ id: users.id })
-    .from(users)
-    .innerJoin(
-      userBranches,
-      and(
-        eq(userBranches.userId, users.id),
-        eq(userBranches.branchId, branchId),
-      ),
-    )
-    .where(
-      and(
-        eq(users.id, barberId),
-        eq(users.organizationId, user.organizationId),
-        eq(users.role, 'barber'),
-        eq(users.status, 'active'),
-        isNull(users.deletedAt),
-      ),
-    )
-    .limit(1)
-
-  if (!barber) {
-    return NextResponse.json({ error: 'Barbero no disponible en la sucursal' }, { status: 400 })
-  }
   const [settings] = await db
     .select({ allowAnonymousWalkin: organizationSettings.allowAnonymousWalkin })
     .from(organizationSettings)
@@ -162,133 +135,19 @@ export async function POST(req: Request) {
   if (source === 'walk_in' && !clientId && !settings?.allowAnonymousWalkin) {
     return NextResponse.json({ error: 'Los walk-in anónimos no están habilitados' }, { status: 403 })
   }
-  if (clientId) {
-    const [client] = await db
-      .select({ id: clients.id })
-      .from(clients)
-      .where(
-        and(
-          eq(clients.id, clientId),
-          eq(clients.organizationId, user.organizationId),
-          eq(clients.active, true),
-          isNull(clients.deletedAt),
-        ),
-      )
-      .limit(1)
-    if (!client) {
-      return NextResponse.json({ error: 'Cliente no encontrado' }, { status: 400 })
-    }
-  }
-
-  // Fetch services to compute end time
-  const serviceRows = await db
-    .select()
-    .from(services)
-    .where(
-      and(
-        eq(services.organizationId, user.organizationId),
-        inArray(services.id, serviceIds),
-        eq(services.active, true),
-        isNull(services.deletedAt),
-      ),
-    )
-
-  if (serviceRows.length !== serviceIds.length) {
-    return NextResponse.json({ error: 'Uno o más servicios no encontrados' }, { status: 400 })
-  }
-
-  const totalDuration = serviceRows.reduce((acc, s) => acc + s.durationMinutes, 0)
-  const startAt = new Date(startAtStr)
-  const endAt = new Date(startAt.getTime() + totalDuration * 60000)
-
-  // Fetch branch for working hours validation
-  const [branch] = await db
-    .select()
-    .from(branches)
-    .where(and(eq(branches.id, branchId), eq(branches.organizationId, user.organizationId)))
-    .limit(1)
-
-  if (!branch) {
-    return NextResponse.json({ error: 'Sucursal no encontrada' }, { status: 404 })
-  }
 
   try {
-    validateBranchWorkingHours(branch, startAt, endAt)
-    await validateBarberAvailability(db, user.organizationId, barberId, branchId, startAt, endAt)
-    await validateNoOverlap(db, barberId, startAt, endAt)
-  } catch (err) {
-    if (err instanceof AvailabilityError || err instanceof OverlapError) {
-      return NextResponse.json({ error: err.message }, { status: 409 })
-    }
-    throw err
-  }
-
-  try {
-    const result = await db.transaction(async (tx) => {
-      validateBranchWorkingHours(branch, startAt, endAt)
-      await validateBarberAvailability(tx, user.organizationId, barberId, branchId, startAt, endAt)
-      await validateNoOverlap(tx, barberId, startAt, endAt)
-
-      const [appointment] = await tx
-        .insert(appointments)
-        .values({
-          organizationId: user.organizationId,
-          branchId,
-          barberId,
-          clientId: clientId ?? null,
-          createdByUserId: user.id,
-          status: 'scheduled',
-          source,
-          startAt,
-          endAt,
-          notes: notes ?? null,
-        })
-        .returning()
-
-      await tx.insert(appointmentServices).values(
-        serviceRows.map((s) => ({
-          organizationId: user.organizationId,
-          appointmentId: appointment.id,
-          serviceId: s.id,
-          priceAtTime: s.price,
-          durationAtTime: s.durationMinutes,
-        })),
-      )
-
-      await tx.insert(appointmentHistory).values({
-        organizationId: user.organizationId,
-        appointmentId: appointment.id,
-        action: 'created',
-        toStatus: 'scheduled',
-        userId: user.id,
-      })
-
-      await tx.insert(auditLogs).values({
-        organizationId: user.organizationId,
-        userId: user.id,
-        action: 'appointment.created',
-        entity: 'appointments',
-        entityId: appointment.id,
-        diff: {
-          branchId,
-          barberId,
-          clientId: clientId ?? null,
-          startAt: startAt.toISOString(),
-          endAt: endAt.toISOString(),
-          serviceIds,
-        },
-      })
-
-      await tx.insert(domainEvents).values({
-        organizationId: user.organizationId,
-        eventType: 'appointment.created',
-        payload: { appointmentId: appointment.id, barberId, branchId },
-        occurredAt: new Date(),
-      })
-
-      return appointment
+    const result = await createAppointment({
+      organizationId: user.organizationId,
+      branchId,
+      barberId,
+      clientId: clientId ?? null,
+      source,
+      startAt: new Date(startAtStr),
+      serviceIds,
+      notes,
+      actor: { type: 'staff', userId: user.id },
     })
-
     return NextResponse.json(result, { status: 201 })
   } catch (err: unknown) {
     // Postgres exclusion_violation (23P01) — double-booking despite pre-check
@@ -301,6 +160,9 @@ export async function POST(req: Request) {
     }
     if (err instanceof AvailabilityError || err instanceof OverlapError) {
       return NextResponse.json({ error: err.message }, { status: 409 })
+    }
+    if (err instanceof AppointmentInputError) {
+      return NextResponse.json({ error: err.message }, { status: err.status })
     }
     throw err
   }

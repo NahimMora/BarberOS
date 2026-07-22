@@ -14,9 +14,10 @@ import {
 } from '@/db/schema'
 import { getSession } from '@/lib/auth/get-session'
 import {
-  assertValidTransition,
+  changeAppointmentStatus,
   AppointmentTransitionError,
-} from '@/lib/appointments/state-machine'
+  AppointmentInputError,
+} from '@/lib/appointments/cancel-appointment'
 import {
   validateNoOverlap,
   validateBarberAvailability,
@@ -116,6 +117,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (err instanceof AvailabilityError || err instanceof OverlapError) {
       return NextResponse.json({ error: err.message }, { status: 409 })
     }
+    if (err instanceof AppointmentTransitionError) {
+      return NextResponse.json({ error: err.message }, { status: 422 })
+    }
+    if (err instanceof AppointmentInputError) {
+      return NextResponse.json({ error: err.message }, { status: err.status })
+    }
     throw err
   }
 }
@@ -140,62 +147,13 @@ async function handleStatusChange(
   data: { action: 'status_change'; newStatus: string; cancelReason?: string },
   user: AppUser,
 ) {
-  try {
-    assertValidTransition(current.status, data.newStatus as AppointmentStatus)
-  } catch (err) {
-    if (err instanceof AppointmentTransitionError) {
-      return NextResponse.json({ error: err.message }, { status: 422 })
-    }
-    throw err
-  }
-
-  if (data.newStatus === 'cancelled' && !data.cancelReason) {
-    return NextResponse.json({ error: 'Se requiere motivo de cancelación' }, { status: 400 })
-  }
-
-  const isSensitive = data.newStatus === 'completed' || data.newStatus === 'cancelled'
-
-  const result = await db.transaction(async (tx) => {
-    const [updated] = await tx
-      .update(appointments)
-      .set({
-        status: data.newStatus as AppointmentStatus,
-        cancelReason: data.cancelReason ?? null,
-        updatedAt: new Date(),
-      })
-      .where(eq(appointments.id, id))
-      .returning()
-
-    await tx.insert(appointmentHistory).values({
-      organizationId: current.organizationId,
-      appointmentId: id,
-      action: data.newStatus === 'cancelled' ? 'cancelled' : 'status_changed',
-      fromStatus: current.status,
-      toStatus: data.newStatus as AppointmentStatus,
-      reason: data.cancelReason,
-      userId: user.id,
-    })
-
-    if (isSensitive) {
-      await tx.insert(auditLogs).values({
-        organizationId: current.organizationId,
-        userId: user.id,
-        action: `appointment.${data.newStatus}`,
-        entity: 'appointments',
-        entityId: id,
-        diff: { from: current.status, to: data.newStatus },
-      })
-    }
-
-    await tx.insert(domainEvents).values({
-      organizationId: current.organizationId,
-      eventType: `appointment.${data.newStatus}`,
-      payload: { appointmentId: id },
-      occurredAt: new Date(),
-    })
-
-    return updated
-  })
+  const result = await changeAppointmentStatus(
+    id,
+    current,
+    data.newStatus as AppointmentStatus,
+    data.cancelReason,
+    { type: 'staff', userId: user.id },
+  )
 
   return NextResponse.json(result)
 }

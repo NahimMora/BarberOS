@@ -33,7 +33,12 @@ async function main() {
 
   const sql = postgres(process.env.DIRECT_URL!, {
     max: 1,
-    ssl: process.env.CI ? false : true,
+    // 'require' encrypts the connection without validating the certificate
+    // chain — full chain verification (`true`) fails on networks with a
+    // TLS-inspecting proxy/antivirus injecting their own root cert, which
+    // `postgres`/`drizzle-kit` elsewhere in this project don't run into
+    // because they don't set `ssl` at all (see src/lib/db/index.ts).
+    ssl: process.env.CI ? false : 'require',
   })
   // `dialect`/`session` back the public migrate() Drizzle exports but
   // aren't part of its typed public API — same objects migrate() itself

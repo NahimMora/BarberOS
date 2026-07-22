@@ -9,7 +9,7 @@
 > confirmaron en esta pasada. Se encontraron y corrigieron 3 bugs reales
 > nuevos durante este recorrido (fecha de agenda, filtro de ausencias,
 > búsqueda de clientes sin tildes) más una fuga de datos de test en la
-> base de desarrollo; ver `docs/PRODUCTION_READINESS.md` para el detalle.
+> base de desarrollo; ver `docs/KNOWN_ISSUES.md` para el detalle.
 > `tsc`/`lint`/`test`/`build` también están verificados y en verde.
 
 ## Cómo correrlo

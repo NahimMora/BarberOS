@@ -14,7 +14,13 @@ import {
   SheetFooter,
 } from '@/components/ui/sheet'
 import { ClientFormDialog, type ClientRecord } from '@/components/clients/client-form-dialog'
+import { ClientCutHistory } from '@/components/clients/client-cut-history'
 import { Copy, Pencil } from 'lucide-react'
+
+const MONTHS = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+]
 
 function initials(client: ClientRecord | null): string {
   if (!client) return '?'
@@ -117,12 +123,31 @@ export function ClientQuickViewSheet({
                   </Badge>
                 </div>
 
+                {(client.nickname || client.profession || client.birthdayDay || client.favoriteBranch) ? (
+                  <div className="flex flex-col gap-1 rounded-xl border border-border/70 bg-muted/40 p-3">
+                    <p className="text-xs font-semibold uppercase text-muted-foreground">Datos extra</p>
+                    <div className="flex flex-col gap-0.5 text-sm text-muted-foreground">
+                      {client.nickname ? <p>Apodo: {client.nickname}</p> : null}
+                      {client.profession ? <p>Profesión: {client.profession}</p> : null}
+                      {client.birthdayDay && client.birthdayMonth ? (
+                        <p>Cumpleaños: {client.birthdayDay} de {MONTHS[client.birthdayMonth - 1]}</p>
+                      ) : null}
+                      {client.favoriteBranch ? <p>Sucursal donde más se corta: {client.favoriteBranch.name}</p> : null}
+                    </div>
+                  </div>
+                ) : null}
+
                 {client.notes ? (
                   <div className="flex flex-col gap-1">
                     <p className="text-xs font-semibold uppercase text-muted-foreground">Notas</p>
                     <p className="text-sm text-muted-foreground">{client.notes}</p>
                   </div>
                 ) : null}
+
+                <div className="flex flex-col gap-2">
+                  <p className="text-xs font-semibold uppercase text-muted-foreground">Historial de cortes</p>
+                  <ClientCutHistory clientId={client.id} />
+                </div>
               </>
             )}
           </div>

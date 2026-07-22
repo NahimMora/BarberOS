@@ -9,6 +9,7 @@ import {
   jsonb,
   primaryKey,
   index,
+  check,
 } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { organizations } from './organizations'
@@ -45,7 +46,10 @@ export const appointments = pgTable('appointments', {
   branchId: uuid('branch_id').notNull().references(() => branches.id),
   barberId: uuid('barber_id').notNull().references(() => users.id),
   clientId: uuid('client_id').references(() => clients.id),
-  createdByUserId: uuid('created_by_user_id').notNull().references(() => users.id),
+  // Exactamente uno de los dos: turno creado por staff (web) o por el
+  // propio cliente (APP) — ver el CHECK más abajo.
+  createdByUserId: uuid('created_by_user_id').references(() => users.id),
+  createdByClientId: uuid('created_by_client_id').references(() => clients.id),
   status: appointmentStatusEnum('status').notNull().default('scheduled'),
   source: appointmentSourceEnum('source').notNull().default('booked'),
   startAt: timestamp('start_at', { withTimezone: true }).notNull(),
@@ -64,6 +68,10 @@ export const appointments = pgTable('appointments', {
     table.organizationId,
     table.barberId,
     table.startAt,
+  ),
+  check(
+    'appointments_created_by_exactly_one',
+    sql`(${table.createdByUserId} IS NOT NULL) <> (${table.createdByClientId} IS NOT NULL)`,
   ),
 ])
 
@@ -93,6 +101,7 @@ export const appointmentHistory = pgTable('appointment_history', {
   reason: text('reason'),
   metadata: jsonb('metadata'),
   userId: uuid('user_id').references(() => users.id),
+  actorClientId: uuid('actor_client_id').references(() => clients.id),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 

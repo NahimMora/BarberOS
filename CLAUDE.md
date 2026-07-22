@@ -8,7 +8,7 @@
 
 ## Específico de Claude Code
 
-- **Plan Mode siempre antes de cada fase.** Leer `docs/PRD.md`, proponer el plan de la fase, **esperar aprobación** y recién entonces implementar. No escribir código sin plan aprobado.
+- **Plan Mode siempre antes de trabajo no trivial.** Leer `docs/PRODUCT.md`, `docs/CURRENT_STATE.md` y `docs/BACKLOG.md` (el MVP ya está completo y deployado — no quedan "fases" del PRD, el trabajo pendiente vive en el backlog), proponer el plan, **esperar aprobación** y recién entonces implementar. No escribir código sin plan aprobado.
 
 - **Reservá esta sesión para lo difícil.** Claude Code (Opus) se usa para arquitectura, el **motor de agenda + anti doble-reserva**, y la lógica de **caja y comisiones**. El trabajo repetitivo de UI, formularios y CRUD de pantallas se delega a **Codex** (que lee `AGENTS.md`). Regla: si un error rompe la plata o los turnos → Claude Code; si es "hacé esta pantalla" → Codex.
 

@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { zodErrorMessage } from '@/lib/validation/zod-error'
-import { eq, and, isNull, ne } from 'drizzle-orm'
+import { eq, and, isNull, ne, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { clients } from '@/db/schema'
+import { clients, appointments, branches } from '@/db/schema'
 import { getSession } from '@/lib/auth/get-session'
 import { requireRole } from '@/lib/auth/require-role'
 import { normalizePhone } from '@/lib/phone/normalize'
@@ -11,6 +11,10 @@ import { normalizePhone } from '@/lib/phone/normalize'
 const updateSchema = z.object({
   firstName: z.string().max(255).optional(),
   lastName: z.string().max(255).optional(),
+  nickname: z.string().max(100).optional(),
+  birthdayDay: z.number().int().min(1).max(31).nullable().optional(),
+  birthdayMonth: z.number().int().min(1).max(12).nullable().optional(),
+  profession: z.string().max(150).optional(),
   whatsappRaw: z.string().max(50).optional(),
   phoneAltRaw: z.string().max(50).optional(),
   notes: z.string().optional(),
@@ -32,7 +36,26 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     .limit(1)
 
   if (!row) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  return NextResponse.json(row)
+
+  // Sucursal donde más se corta — calculado al vuelo sobre el historial de
+  // turnos, no se guarda como columna para no desincronizarse.
+  const [favorite] = await db
+    .select({
+      branchId: appointments.branchId,
+      branchName: branches.name,
+      visits: sql<number>`count(*)`.as('visits'),
+    })
+    .from(appointments)
+    .innerJoin(branches, eq(branches.id, appointments.branchId))
+    .where(and(eq(appointments.clientId, id), eq(appointments.organizationId, user.organizationId)))
+    .groupBy(appointments.branchId, branches.name)
+    .orderBy(sql`count(*) desc`)
+    .limit(1)
+
+  return NextResponse.json({
+    ...row,
+    favoriteBranch: favorite ? { id: favorite.branchId, name: favorite.branchName } : null,
+  })
 }
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {

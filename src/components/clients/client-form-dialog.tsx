@@ -8,6 +8,13 @@ import { Field, FieldContent, FieldGroup, FieldLabel } from '@/components/ui/fie
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -15,10 +22,19 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 
+const MONTHS = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+]
+
 export type ClientRecord = {
   id: string
   firstName: string | null
   lastName: string | null
+  nickname: string | null
+  birthdayDay: number | null
+  birthdayMonth: number | null
+  profession: string | null
   whatsappRaw: string | null
   whatsappE164: string | null
   notes: string | null
@@ -26,11 +42,16 @@ export type ClientRecord = {
   createdAt: string
   consentData: boolean
   consentWhatsapp: boolean
+  favoriteBranch?: { id: string; name: string } | null
 }
 
 type ClientForm = {
   firstName: string
   lastName: string
+  nickname: string
+  birthdayDay: string
+  birthdayMonth: string
+  profession: string
   whatsappRaw: string
   notes: string
   consentData: boolean
@@ -40,6 +61,10 @@ type ClientForm = {
 const emptyForm: ClientForm = {
   firstName: '',
   lastName: '',
+  nickname: '',
+  birthdayDay: '',
+  birthdayMonth: '',
+  profession: '',
   whatsappRaw: '',
   notes: '',
   consentData: false,
@@ -68,6 +93,10 @@ export function ClientFormDialog({
       setForm({
         firstName: client.firstName ?? '',
         lastName: client.lastName ?? '',
+        nickname: client.nickname ?? '',
+        birthdayDay: client.birthdayDay ? String(client.birthdayDay) : '',
+        birthdayMonth: client.birthdayMonth ? String(client.birthdayMonth) : '',
+        profession: client.profession ?? '',
         whatsappRaw: client.whatsappRaw ?? '',
         notes: client.notes ?? '',
         consentData: client.consentData,
@@ -88,6 +117,10 @@ export function ClientFormDialog({
       const payload: Record<string, unknown> = {
         firstName: form.firstName,
         lastName: form.lastName,
+        nickname: form.nickname,
+        birthdayDay: form.birthdayDay ? Number(form.birthdayDay) : null,
+        birthdayMonth: form.birthdayMonth ? Number(form.birthdayMonth) : null,
+        profession: form.profession,
         whatsappRaw: form.whatsappRaw,
         notes: form.notes,
       }
@@ -158,6 +191,55 @@ export function ClientFormDialog({
               onChange={(e) => setForm({ ...form, whatsappRaw: e.target.value })}
             />
           </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field>
+              <FieldLabel htmlFor="clientNickname">Apodo</FieldLabel>
+              <Input
+                id="clientNickname"
+                value={form.nickname}
+                onChange={(e) => setForm({ ...form, nickname: e.target.value })}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="clientProfession">Profesión</FieldLabel>
+              <Input
+                id="clientProfession"
+                value={form.profession}
+                onChange={(e) => setForm({ ...form, profession: e.target.value })}
+              />
+            </Field>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field>
+              <FieldLabel htmlFor="clientBirthdayDay">Día de cumpleaños</FieldLabel>
+              <Input
+                id="clientBirthdayDay"
+                type="number"
+                min={1}
+                max={31}
+                value={form.birthdayDay}
+                onChange={(e) => setForm({ ...form, birthdayDay: e.target.value })}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="clientBirthdayMonth">Mes de cumpleaños</FieldLabel>
+              <Select
+                value={form.birthdayMonth}
+                onValueChange={(value) => setForm({ ...form, birthdayMonth: value ?? '' })}
+              >
+                <SelectTrigger id="clientBirthdayMonth" className="w-full">
+                  <SelectValue placeholder="Mes" />
+                </SelectTrigger>
+                <SelectContent>
+                  {MONTHS.map((label, index) => (
+                    <SelectItem key={label} value={String(index + 1)}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          </div>
           <Field>
             <FieldLabel htmlFor="clientNotes">Notas</FieldLabel>
             <Textarea

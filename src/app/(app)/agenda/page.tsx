@@ -72,6 +72,7 @@ import { calculateSaleTotals } from '@/lib/money/money'
 import { getLocalCalendarDate } from '@/lib/datetime/local-day-range'
 import { ClientFormDialog, type ClientRecord } from '@/components/clients/client-form-dialog'
 import { ClientQuickViewSheet } from '@/components/clients/client-quick-view-sheet'
+import { CompleteAppointmentPhotoDialog } from '@/components/clients/complete-appointment-photo-dialog'
 
 type Appointment = {
   id: string
@@ -222,6 +223,7 @@ export default function AgendaPage() {
   const [rescheduleReason, setRescheduleReason] = useState('')
   const [chargeTarget, setChargeTarget] = useState<Appointment | null>(null)
   const [chargeDiscount, setChargeDiscount] = useState('0.00')
+  const [completePhotoTarget, setCompletePhotoTarget] = useState<Appointment | null>(null)
   const [chargeMethod, setChargeMethod] = useState('cash')
   const [chargeNote, setChargeNote] = useState('')
   const [chargeServices, setChargeServices] = useState<AppointmentServiceLine[]>([])
@@ -563,6 +565,10 @@ export default function AgendaPage() {
       return
     }
     toast.success('Turno actualizado')
+    if (newStatus === 'completed') {
+      const completed = appointments.find((a) => a.id === id)
+      if (completed?.clientId) setCompletePhotoTarget(completed)
+    }
     fetchAppointments()
   }
 
@@ -1232,6 +1238,16 @@ export default function AgendaPage() {
         open={quickViewOpen}
         onOpenChange={setQuickViewOpen}
       />
+
+      {completePhotoTarget?.clientId ? (
+        <CompleteAppointmentPhotoDialog
+          open={Boolean(completePhotoTarget)}
+          onOpenChange={(next) => { if (!next) setCompletePhotoTarget(null) }}
+          clientId={completePhotoTarget.clientId}
+          branchId={completePhotoTarget.branchId}
+          appointmentId={completePhotoTarget.id}
+        />
+      ) : null}
     </div>
   )
 }

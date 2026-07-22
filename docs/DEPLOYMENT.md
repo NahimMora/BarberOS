@@ -2,30 +2,36 @@
 
 > Guía de despliegue a pre-producción/producción. Cubre Railway y Render
 > (los dos targets pedidos), Supabase (DB/Auth/Storage), Cloudflare DNS, y
-> por qué Cloudflare R2 quedó documentado pero **no implementado**. Basado
-> en documentación oficial citada en cada sección — no en supuestos.
+> Cloudflare R2 (fotos de cliente, acotado — ver más abajo). Basado en
+> documentación oficial citada en cada sección — no en supuestos.
 >
-> **No hacer un deploy real sin confirmación explícita del usuario.**
+> **Estado: ya hecho.** El deploy real se hizo el 2026-07-16 en **Render**,
+> con Supabase de producción bootstrapeado y dominio propio en Cloudflare.
+> Detalle completo en `docs/CURRENT_STATE.md`. Esta guía queda vigente
+> para redeploys, un segundo entorno,
+> o referencia de cómo se hizo — **no volver a correr los pasos
+> destructivos (bootstrap, migrate:fresh) sin confirmación explícita**, ya
+> corrieron contra la base de producción real.
 
 ## Resumen de decisiones
 
-- **App:** Railway o Render, ambos preparados. **Recomendación: Railway**
-  (ver comparación al final).
+- **App:** Railway o Render, ambos preparados. Recomendación original:
+  Railway (ver comparación al final) — **en la práctica se deployó en
+  Render**.
 - **DB / Auth:** Supabase, sin cambios — ya es la decisión de `AGENTS.md`.
-- **Archivos:** se queda en **Supabase Storage**, no Cloudflare R2. `AGENTS.md`
-  marca "Archivos a Supabase Storage" como regla técnica innegociable, y la
-  implementación actual (`src/app/api/files/route.ts`) ya sube a un bucket
-  privado de Supabase Storage end-to-end. Migrar a R2 es una reescritura de
-  esa ruta (SDK S3 nuevo, credenciales nuevas, y migrar los archivos ya
-  subidos), no "agregar variables de entorno" — así que no se hizo sin
-  aprobación explícita. Ver [Cloudflare R2 (opcional, no implementado)](#cloudflare-r2-opcional-no-implementado)
-  para lo que haría falta si se decide migrar más adelante.
+  Auth también sirve a la APP de clientes (Phone provider vía Twilio,
+  Google OAuth) — ver [App de clientes](#app-de-clientes).
+- **Archivos:** se queda en **Supabase Storage**, salvo fotos de
+  historial de cortes de clientes, que van a **Cloudflare R2** desde el
+  2026-07-20 (decisión explícita, acotada — ver `docs/DECISIONS.md`).
+  `AGENTS.md` documenta la excepción. Ver [Cloudflare R2](#cloudflare-r2)
+  para las variables reales que hace falta configurar.
 - **Dominio/DNS:** Cloudflare, apuntando a Railway o Render.
 
 ## Antes de desplegar
 
 1. `npx tsc --noEmit`, `npm run lint`, `npm run test`, `npm run build` en
-   verde (ver `docs/PRODUCTION_READINESS.md` para el último snapshot).
+   verde (ver `docs/CURRENT_STATE.md` para el último snapshot).
 2. Las 5 variables de `.env.example` cargadas en la plataforma (ver
    [Variables de entorno](#variables-de-entorno)).
 3. Migraciones aplicadas contra la base de producción: `npm run db:migrate`
@@ -96,6 +102,34 @@ misma transacción en la que se agregó. Usar **`npm run db:migrate:fresh`**
 en este caso — mismo resultado final, pero aplica las migraciones en dos
 tandas (separadas por un commit) usando `scripts/migrate-fresh.ts`. Ver
 `docs/DECISIONS.md` para el diagnóstico completo.
+
+**Gotcha real encontrado en el deploy del 2026-07-16:** `migrate-fresh.ts`
+fijaba `ssl: true` (full chain verification), que falla con `self-signed
+certificate in certificate chain` en cualquier red con un proxy de
+inspección TLS/antivirus que inyecta su propio certificado raíz —no es un
+problema de Supabase. El resto del proyecto no lo sufre porque no fija
+`ssl` explícitamente. Si vuelve a pasar, cambiar a `ssl: 'require'`
+(encripta la conexión sin validar la cadena) en
+`scripts/migrate-fresh.ts`.
+
+### Bootstrap y equipo inicial
+
+Contra un Supabase de producción nuevo, después de migrar:
+
+1. `npx tsx --env-file=.env.production.local scripts/bootstrap-production.ts`
+   (o `npm run db:bootstrap-production`) — crea **una sola** organización
+   real y **una sola** cuenta admin real, sin datos demo. Requiere
+   `BOOTSTRAP_ORG_NAME`, `BOOTSTRAP_ADMIN_NAME`, `BOOTSTRAP_ADMIN_EMAIL`,
+   `BOOTSTRAP_ADMIN_PASSWORD` además de las env vars normales.
+2. Opcional — `npx tsx --env-file=.env.production.local scripts/seed-production-team.ts`:
+   agrega una sucursal, un menú de servicios inicial, y una cuenta barbero
+   + una recepcionista **placeholder** (emails `+alias` sobre el email del
+   admin, contraseña temporal vía `TEAM_PLACEHOLDER_PASSWORD`) para que la
+   app tenga algo coherente que mostrar apenas se deploya. Está pensado
+   para reemplazarse por el equipo real desde Operación una vez confirmado
+   — no para quedarse así en producción. **Usado en el deploy del
+   2026-07-16; el equipo en producción sigue siendo este placeholder** (ver
+   `docs/CURRENT_STATE.md`).
 
 ### Autorización (RLS)
 
@@ -218,39 +252,49 @@ Fuente oficial: [Cloudflare DNS — Full setup](https://developers.cloudflare.co
    vez que el DNS resuelve correctamente — no hace falta subir un
    certificado propio.
 
-## Cloudflare R2 (opcional, no implementado)
+## Cloudflare R2
 
-**No se migró el storage de archivos a R2** — ver la decisión al principio
-de este documento. Si en el futuro se decide migrar (por costo de egress,
-o para servir `client_photo`/`public_profile` públicamente desde un CDN en
-vez de por bucket privado de Supabase), esto es lo que haría falta,
-según la documentación oficial de Cloudflare R2:
+**Implementado, acotado a fotos de historial de cortes de clientes**
+(`client_visit_photos` / `files.storage_provider = 'r2'`,
+`src/lib/storage/r2.ts`) — ver `docs/DECISIONS.md` (2026-07-20). Todo lo
+demás (`files` de staff/documentos) sigue en Supabase Storage sin cambios.
 
 - **Endpoint S3-compatible:** `https://<ACCOUNT_ID>.r2.cloudflarestorage.com`
   ([S3 API compatibility](https://developers.cloudflare.com/r2/api/s3/api/)).
-- **Región:** `auto` (R2 no tiene regiones múltiples vía S3 API; `us-east-1`
-  también resuelve a `auto` para SDKs que no aceptan región vacía).
+- **Región:** `auto` (R2 no tiene regiones múltiples vía S3 API).
 - **Credenciales:** un API Token de R2 (access key id + secret access key),
-  separado de las API keys generales de Cloudflare.
-- **Variables de entorno que haría falta agregar** (no están en
-  `.env.example` hoy porque nada las lee): `R2_ACCOUNT_ID`,
-  `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, y
-  opcionalmente `R2_PUBLIC_DOMAIN` si se configura un dominio custom para
-  servir objetos públicos directamente.
-- **CORS:** si algún día se sube desde el browser directo a R2 (URLs
-  prefirmadas) en vez de por el backend como hoy, hay que configurar una
-  política CORS en el bucket (`AllowedOrigins`, `AllowedMethods`,
-  `AllowedHeaders`) — ver [Configure CORS](https://developers.cloudflare.com/r2/buckets/cors/).
-  Con el patrón actual (el backend sube el archivo, el browser nunca habla
-  directo con el storage) esto no hace falta.
-- **Dominio público:** para servir objetos públicos con URL propia
-  (`archivos.tudominio.com`) en vez de la URL default de R2, se conecta un
-  dominio custom desde el bucket — recomendado para producción si se migra,
-  ya que la URL default de R2 no está pensada para tráfico público
-  sostenido.
+  separado de las API keys generales de Cloudflare. Dashboard → R2 →
+  Manage API Tokens.
+- **Variables de entorno** (ver `.env.example`, cargar en Render igual que
+  las demás): `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`,
+  `R2_BUCKET_NAME` (bucket privado, ej. `barberos-client-photos`).
+- **Bucket privado, sin dominio público conectado**: el patrón es el mismo
+  que Supabase Storage — el backend sube el objeto
+  (`POST /api/clients/{id}/photos`, staff-only) y genera URLs firmadas de
+  corta duración para leer (`getR2SignedDownloadUrl`, usado tanto por la
+  web como por `GET /api/client/cut-history`). El browser/app nunca habla
+  directo con R2, así que **no hace falta configurar CORS** en el bucket.
 - **Compatibilidad:** R2 no soporta ACLs, bucket policies, versionado,
-  object lock ni server-side encryption gestionada — si la lógica de
-  migración asume alguna de esas features de S3, hay que revisarla.
+  object lock ni server-side encryption gestionada — no relevante para el
+  uso actual (solo `PutObject`/`GetObject`/`DeleteObject`).
+
+## App de clientes
+
+Config operativa para que la APK (`app-BarberOS`, repo separado, ver
+`docs/MOBILE_APP_BRIEF.md`) funcione contra este backend:
+
+- **Supabase Auth → Phone provider:** habilitar con Twilio (Account SID,
+  Auth Token, Messaging Service SID) — dashboard de Supabase, no en este
+  repo. Ver `docs/DECISIONS.md` por qué Twilio.
+- **Supabase Auth → Google provider:** habilitar con el client ID/secret
+  de un proyecto de Google Cloud Console. Para el build de Android
+  (Expo/EAS) hace falta registrar el paquete de la app y su huella SHA-1
+  en ese mismo proyecto de Google.
+- **`organization_settings.client_booking_enabled`**: arranca en `false`
+  para toda organización (default de schema). Se activa a mano contra la
+  base cuando la APK esté lista para producción — no hay UI para este
+  toggle todavía (mismo criterio que `allow_anonymous_walkin`/
+  `allow_barber_charge`, que tampoco la tienen).
 
 ## CI
 
@@ -268,7 +312,7 @@ pedido.
 ## Observabilidad mínima
 
 `system_events` ya existe en el modelo (`recordSystemEvent`, usado en
-rutas críticas como exports y control-events) y `docs/PRODUCTION_READINESS.md`
+rutas críticas como exports y control-events) y `docs/KNOWN_ISSUES.md`
 señala que falta instrumentación sistemática de errores no controlados en
 las rutas de dinero (`/api/sales`, `/api/cash-*`, `/api/commissions`). No
 se agregó un servicio externo (Sentry u otro) en este ciclo — requiere
@@ -278,19 +322,30 @@ pre-producción.
 
 ## Checklist predeploy / postdeploy
 
+> Estado real del deploy del 2026-07-16 (Render) — ver
+> `docs/CURRENT_STATE.md` para el detalle completo.
+
 **Predeploy**
-- [ ] `tsc`/`lint`/`test`/`build` en verde
-- [ ] Variables de entorno cargadas en la plataforma
-- [ ] Migraciones aplicadas contra la DB de producción (`db:migrate`, o
-  `db:migrate:fresh` si es un proyecto de Supabase nuevo — ver
-  [Base de datos](#base-de-datos))
-- [ ] Bucket `barberos-private` creado y privado en el proyecto de Supabase de producción
-- [ ] Dominio de producción agregado a Supabase Auth → Redirect URLs
+- [x] `tsc`/`lint`/`test`/`build` en verde
+- [x] Variables de entorno cargadas en la plataforma (Render)
+- [x] Migraciones aplicadas contra la DB de producción (`db:migrate:fresh`,
+  proyecto de Supabase nuevo — ver [Base de datos](#base-de-datos))
+- [x] Bucket `barberos-private` creado y privado en el proyecto de Supabase de producción
+- [x] Dominio de producción agregado a Supabase Auth → Redirect URLs
 
 **Postdeploy**
-- [ ] `/api/health` responde 200
-- [ ] Login con credenciales reales funciona
+- [x] `/api/health` responde 200
+- [x] Login con credenciales reales funciona
 - [ ] Flujo "olvidé mi contraseña" llega el mail y el link vuelve a la app
-- [ ] Un ciclo completo turno → cobro → cierre de caja → comisión en datos reales (no demo)
-- [ ] Exportación de un reporte descarga bien (no JSON crudo)
-- [ ] HTTPS activo en el dominio custom
+  — no confirmado explícitamente en esta pasada
+- [x] Un ciclo completo turno → cobro → cierre de caja → comisión en datos
+  reales (no demo) — probado contra el equipo/servicios placeholder de
+  `scripts/seed-production-team.ts`, no datos definitivos del negocio
+- [x] Exportación de un reporte descarga bien (no JSON crudo)
+- [x] HTTPS activo en el dominio custom (Cloudflare)
+
+**Pendiente después de este deploy:** reemplazar el equipo/sucursal/
+servicios placeholder por los datos reales del negocio desde Operación, y
+commitear `scripts/migrate-fresh.ts` (fix SSL) y
+`scripts/seed-production-team.ts`, que se usaron sin estar todavía en el
+repo.

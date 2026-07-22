@@ -24,8 +24,14 @@ describeDatabase('row level security', () => {
   let adminAAuthId: string
   let adminAId: string
   let barberAAuthId: string
+  let barberAId: string
   let branchAId: string
   let branchBId: string
+  let clientAAuthId: string
+  let clientAId: string
+  let otherClientId: string
+  let clientAAppointmentId: string
+  let otherAppointmentId: string
 
   beforeAll(async () => {
     sql = postgres(connectionString!, { max: 1 })
@@ -44,10 +50,10 @@ describeDatabase('row level security', () => {
       values (${orgAId}, gen_random_uuid(), 'Admin A', 'rls-admin-a@test.local', 'admin', 'active')
       returning id, auth_id
     `
-    const [barberA] = await sql<{ auth_id: string }[]>`
+    const [barberA] = await sql<{ id: string; auth_id: string }[]>`
       insert into users (organization_id, auth_id, full_name, email, role, status)
       values (${orgAId}, gen_random_uuid(), 'Barber A', 'rls-barber-a@test.local', 'barber', 'active')
-      returning auth_id
+      returning id, auth_id
     `
     await sql`
       insert into users (organization_id, auth_id, full_name, email, role, status)
@@ -56,6 +62,7 @@ describeDatabase('row level security', () => {
     adminAId = adminA.id
     adminAAuthId = adminA.auth_id
     barberAAuthId = barberA.auth_id
+    barberAId = barberA.id
 
     const [branchA] = await sql<{ id: string }[]>`
       insert into branches (organization_id, name) values (${orgAId}, 'Branch A') returning id
@@ -65,9 +72,52 @@ describeDatabase('row level security', () => {
     `
     branchAId = branchA.id
     branchBId = branchB.id
+
+    const [clientA] = await sql<{ id: string; auth_user_id: string }[]>`
+      insert into clients (organization_id, first_name, auth_user_id)
+      values (${orgAId}, 'Client A', gen_random_uuid())
+      returning id, auth_user_id
+    `
+    clientAId = clientA.id
+    clientAAuthId = clientA.auth_user_id
+
+    const [otherClient] = await sql<{ id: string }[]>`
+      insert into clients (organization_id, first_name) values (${orgAId}, 'Other Client') returning id
+    `
+    otherClientId = otherClient.id
+
+    const [clientAAppointment] = await sql<{ id: string }[]>`
+      insert into appointments (
+        organization_id, branch_id, barber_id, client_id, created_by_client_id,
+        status, source, start_at, end_at
+      )
+      values (
+        ${orgAId}, ${branchAId}, ${barberAId}, ${clientAId}, ${clientAId},
+        'scheduled', 'booked',
+        '2099-05-01T13:00:00.000Z', '2099-05-01T14:00:00.000Z'
+      )
+      returning id
+    `
+    clientAAppointmentId = clientAAppointment.id
+
+    const [otherAppointment] = await sql<{ id: string }[]>`
+      insert into appointments (
+        organization_id, branch_id, barber_id, client_id, created_by_user_id,
+        status, source, start_at, end_at
+      )
+      values (
+        ${orgAId}, ${branchAId}, ${barberAId}, ${otherClientId}, ${adminAId},
+        'scheduled', 'booked',
+        '2099-05-02T13:00:00.000Z', '2099-05-02T14:00:00.000Z'
+      )
+      returning id
+    `
+    otherAppointmentId = otherAppointment.id
   })
 
   afterAll(async () => {
+    await sql`delete from appointments where id in (${clientAAppointmentId}, ${otherAppointmentId})`
+    await sql`delete from clients where id in (${clientAId}, ${otherClientId})`
     await sql.end()
   })
 
@@ -101,6 +151,28 @@ describeDatabase('row level security', () => {
     })
 
     expect(rows).toEqual([])
+  })
+
+  it('clients_select_self: a client sees only their own client row', async () => {
+    const rows = await sql.begin(async (tx) => {
+      await tx`select set_config('request.jwt.claim.sub', ${clientAAuthId}, true)`
+      await tx`set local role authenticated`
+      return tx<{ id: string }[]>`select id from clients`
+    })
+
+    expect(rows.map((row) => row.id)).toEqual([clientAId])
+  })
+
+  it('appointments_select_self: a client sees only their own appointments', async () => {
+    const rows = await sql.begin(async (tx) => {
+      await tx`select set_config('request.jwt.claim.sub', ${clientAAuthId}, true)`
+      await tx`set local role authenticated`
+      return tx<{ id: string }[]>`select id from appointments`
+    })
+
+    const ids = rows.map((row) => row.id)
+    expect(ids).toContain(clientAAppointmentId)
+    expect(ids).not.toContain(otherAppointmentId)
   })
 
   it('service_role bypasses RLS entirely', async () => {

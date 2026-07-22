@@ -24,7 +24,12 @@ export const fileVisibilityEnum = pgEnum('file_visibility', [
   'admin_only',
   'staff_related',
   'public_profile',
+  'client_visible',
 ])
+
+// Todo lo que no sea foto de cliente sigue en Supabase Storage — ver
+// AGENTS.md y docs/DECISIONS.md para el alcance exacto de la excepción de R2.
+export const fileStorageProviderEnum = pgEnum('file_storage_provider', ['supabase', 'r2'])
 
 export const files = pgTable('files', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
@@ -33,6 +38,7 @@ export const files = pgTable('files', {
   entityId: uuid('entity_id').notNull(),
   fileCategory: fileCategoryEnum('file_category').notNull(),
   visibility: fileVisibilityEnum('visibility').notNull().default('admin_only'),
+  storageProvider: fileStorageProviderEnum('storage_provider').notNull().default('supabase'),
   storageBucket: varchar('storage_bucket', { length: 100 }).notNull(),
   storagePath: varchar('storage_path', { length: 500 }).notNull(),
   originalFilename: varchar('original_filename', { length: 255 }).notNull(),

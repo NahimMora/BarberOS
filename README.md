@@ -72,10 +72,16 @@ npm run db:migrate   # aplicar migraciones pendientes
 npm run db:seed      # cargar datos demo (idempotente)
 ```
 
-## Arquitectura
+## Documentación
 
-Ver [`docs/PRD.md`](docs/PRD.md) para el detalle completo del producto y [`AGENTS.md`](AGENTS.md) para las reglas técnicas.
+- [`docs/PRODUCT.md`](docs/PRODUCT.md) — qué problema resuelve, para quién, qué no resuelve.
+- [`docs/USERS.md`](docs/USERS.md) — roles y permisos.
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — stack, componentes, entornos.
+- [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md) — qué funciona, qué falta, próximo objetivo (documento vivo).
+- [`docs/BACKLOG.md`](docs/BACKLOG.md) / [`docs/KNOWN_ISSUES.md`](docs/KNOWN_ISSUES.md) / [`docs/ROADMAP.md`](docs/ROADMAP.md) — pendiente real, problemas conocidos, y qué queda fuera de v1.
+- [`docs/DECISIONS.md`](docs/DECISIONS.md) — por qué se decidió cada cosa no obvia.
+- [`AGENTS.md`](AGENTS.md) — reglas técnicas y convenciones para agentes.
 
 ## Producción
 
-Ver [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) para desplegar en Railway o Render, y [`docs/PRODUCTION_READINESS.md`](docs/PRODUCTION_READINESS.md) para el estado actual del MVP.
+Ver [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) para el paso a paso de deploy (Render/Railway), [`docs/RUNBOOK.md`](docs/RUNBOOK.md) para procedimientos operativos, y [`docs/CURRENT_STATE.md`](docs/CURRENT_STATE.md) para el estado real del deploy ya hecho.

@@ -10,6 +10,7 @@ import {
 } from 'drizzle-orm/pg-core'
 import { sql } from 'drizzle-orm'
 import { organizations } from './organizations'
+import { clients } from './clients'
 
 export const systemEventLevelEnum = pgEnum('system_event_level', ['info', 'warn', 'error'])
 
@@ -17,6 +18,7 @@ export const auditLogs = pgTable('audit_logs', {
   id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
   organizationId: uuid('organization_id').notNull().references(() => organizations.id),
   userId: uuid('user_id'),
+  actorClientId: uuid('actor_client_id').references(() => clients.id),
   action: varchar('action', { length: 100 }).notNull(),
   entity: varchar('entity', { length: 100 }).notNull(),
   entityId: uuid('entity_id'),

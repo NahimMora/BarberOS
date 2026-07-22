@@ -57,7 +57,7 @@ Solo admin, desde `/caja`:
 4. **Si la comisión ya fue liquidada (`paid`), la anulación se rechaza**
    con un mensaje explícito. Hoy no hay forma de anular esa venta desde la
    UI — es una limitación conocida (ver "Pendientes reales" en
-   `docs/PRODUCTION_READINESS.md`). Si de verdad hace falta corregirlo,
+   `docs/KNOWN_ISSUES.md`). Si de verdad hace falta corregirlo,
    requiere intervención manual en la base de datos por alguien que
    entienda las tres tablas involucradas (`sales`, `commissions`,
    `cash_movements`) y deje su propio registro de auditoría — no

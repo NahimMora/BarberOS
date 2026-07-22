@@ -27,6 +27,9 @@ export const organizationSettings = pgTable('organization_settings', {
   defaultCommissionRate: numeric('default_commission_rate', { precision: 5, scale: 2 }).notNull().default('0.00'),
   allowBarberCharge: boolean('allow_barber_charge').notNull().default(true),
   allowAnonymousWalkin: boolean('allow_anonymous_walkin').notNull().default(true),
+  // Kill switch para el auto-agendado desde la APP de clientes — arranca
+  // apagado, se prende cuando la app esté lista para producción.
+  clientBookingEnabled: boolean('client_booking_enabled').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [

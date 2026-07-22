@@ -92,6 +92,20 @@
       "when": 1784171718537,
       "tag": "0012_unaccent_extension",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1784532175668,
+      "tag": "0013_first_triathlon",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1784532292145,
+      "tag": "0014_client_app_rls",
+      "breakpoints": true
     }
   ]
 }

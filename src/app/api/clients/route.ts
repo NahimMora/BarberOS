@@ -10,6 +10,10 @@ import { normalizePhone } from '@/lib/phone/normalize'
 const createSchema = z.object({
   firstName: z.string().max(255).optional(),
   lastName: z.string().max(255).optional(),
+  nickname: z.string().max(100).optional(),
+  birthdayDay: z.number().int().min(1).max(31).nullable().optional(),
+  birthdayMonth: z.number().int().min(1).max(12).nullable().optional(),
+  profession: z.string().max(150).optional(),
   whatsappRaw: z.string().max(50).optional(),
   phoneAltRaw: z.string().max(50).optional(),
   notes: z.string().optional(),
