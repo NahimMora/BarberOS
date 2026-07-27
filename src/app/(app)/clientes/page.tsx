@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { PageHeader } from '@/components/page-header'
 import { ClientFormDialog, type ClientRecord } from '@/components/clients/client-form-dialog'
+import { ClientQuickViewSheet } from '@/components/clients/client-quick-view-sheet'
 import {
   Table,
   TableBody,
@@ -34,6 +35,8 @@ export default function ClientesPage() {
   const [loading, setLoading] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Client | null>(null)
+  const [quickViewClientId, setQuickViewClientId] = useState<string | null>(null)
+  const [quickViewOpen, setQuickViewOpen] = useState(false)
 
   const fetchClients = useCallback(async () => {
     setLoading(true)
@@ -63,6 +66,11 @@ export default function ClientesPage() {
   function openEdit(c: Client) {
     setEditing(c)
     setDialogOpen(true)
+  }
+
+  function openQuickView(id: string) {
+    setQuickViewClientId(id)
+    setQuickViewOpen(true)
   }
 
   return (
@@ -124,7 +132,13 @@ export default function ClientesPage() {
                 clients.map((c) => (
                   <TableRow key={c.id}>
                     <TableCell className="font-medium">
-                      {[c.firstName, c.lastName].filter(Boolean).join(' ') || '—'}
+                      <button
+                        type="button"
+                        onClick={() => openQuickView(c.id)}
+                        className="text-left hover:underline"
+                      >
+                        {[c.firstName, c.lastName].filter(Boolean).join(' ') || '—'}
+                      </button>
                     </TableCell>
                     <TableCell>{c.whatsappE164 ?? c.whatsappRaw ?? '—'}</TableCell>
                     <TableCell className="max-w-xs truncate text-muted-foreground">
@@ -162,15 +176,19 @@ export default function ClientesPage() {
             clients.map((client) => (
               <Card key={client.id}>
                 <CardContent className="flex items-start justify-between gap-4 py-1">
-                  <div className="min-w-0">
-                    <p className="truncate font-heading text-xl font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => openQuickView(client.id)}
+                    className="min-w-0 text-left"
+                  >
+                    <p className="truncate font-heading text-xl font-semibold hover:underline">
                       {[client.firstName, client.lastName].filter(Boolean).join(' ') || 'Sin nombre'}
                     </p>
                     <p className="mt-1 text-sm text-muted-foreground">
                       {client.whatsappE164 ?? client.whatsappRaw ?? 'Sin teléfono'}
                     </p>
                     {client.notes ? <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">{client.notes}</p> : null}
-                  </div>
+                  </button>
                   <div className="flex shrink-0 flex-col items-end gap-3">
                     <Badge variant={client.active ? 'default' : 'secondary'}>
                       {client.active ? 'Activo' : 'Inactivo'}
@@ -191,6 +209,12 @@ export default function ClientesPage() {
         onOpenChange={setDialogOpen}
         client={editing}
         onSaved={() => fetchClients()}
+      />
+
+      <ClientQuickViewSheet
+        clientId={quickViewClientId}
+        open={quickViewOpen}
+        onOpenChange={setQuickViewOpen}
       />
     </div>
   )
