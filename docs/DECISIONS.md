@@ -5,6 +5,37 @@
 > duplica `AGENTS.md`/`docs/PRODUCT.md` (fuente de verdad de alcance del
 > producto) — esto es el "por qué" de decisiones puntuales.
 
+## 2026-07-26 — Bypass provisorio de teléfono confirmado en el registro de clientes
+
+**Decisión:** `POST /api/client/register` y la APP (`lib/auth-context.tsx`)
+permiten saltear la exigencia de teléfono confirmado cuando
+`ALLOW_UNVERIFIED_PHONE_REGISTRATION` (backend) /
+`EXPO_PUBLIC_ALLOW_UNVERIFIED_PHONE` (app) están en `true`. Apagado por
+defecto en ambos — hay que setearlo explícitamente en cada entorno.
+
+**Motivo:** todavía no hay un número de Twilio comprado, así que ni el SMS
+OTP ni la verificación de teléfono tras Google funcionan. Pedido explícito
+del usuario para poder seguir probando el resto del flujo (agenda, perfil,
+historial de cortes) sin quedar bloqueado.
+
+**Alternativas rechazadas:** sacar la exigencia de teléfono directamente
+del código — descartado porque es un requisito de producto explícito
+("confirmar el teléfono antes de poder registrarse", ver el pedido
+original de la APP), no algo que deba desaparecer, solo pausarse.
+
+**Consecuencias:** mientras la flag esté prendida en producción, cualquier
+registro por Google sin verificar teléfono crea un `clients` sin
+`whatsapp_e164` (columna ya nullable, sin cambio de schema) — sin dedupe
+posible contra un walk-in cargado por recepción con ese mismo número. Esto
+afecta el backend real (Render), no solo desarrollo — el usuario tiene que
+cargar `ALLOW_UNVERIFIED_PHONE_REGISTRATION=true` a mano en el dashboard
+de Render para que aplique ahí (este repo no controla esa variable).
+
+**Revisar nuevamente cuando:** se compre un número de Twilio y se pruebe
+el flujo de SMS/verificación real — ahí hay que apagar la flag en Render
+y en el `.env` de la APP, y idealmente limpiar los `clients` de prueba
+creados sin teléfono durante esta ventana.
+
 ## 2026-07-20 — Portal de cliente (APP + ampliación de clientes) sale del roadmap a alcance activo
 
 **Decisión:** se construye una APK de clientes (registro, agenda,

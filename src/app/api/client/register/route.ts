@@ -29,12 +29,24 @@ export async function POST(req: Request) {
 
   // Teléfono confirmado siempre, sea cual sea el método de entrada (SMS OTP
   // o Google) — requisito explícito del producto, no solo de la APP.
-  if (!authUser.phone || !authUser.phone_confirmed_at) {
+  //
+  // PROVISORIO (2026-07-26, ver docs/DECISIONS.md): mientras no haya un
+  // número de Twilio comprado, ALLOW_UNVERIFIED_PHONE_REGISTRATION permite
+  // saltear esta exigencia para poder probar el resto del flujo (agenda,
+  // perfil, historial) desde Google sin teléfono. Apagado por defecto —
+  // hay que sacarlo antes de un lanzamiento real.
+  const allowUnverifiedPhone = process.env.ALLOW_UNVERIFIED_PHONE_REGISTRATION === 'true'
+  if (!allowUnverifiedPhone && (!authUser.phone || !authUser.phone_confirmed_at)) {
     return NextResponse.json({ error: 'PHONE_NOT_VERIFIED' }, { status: 403 })
   }
 
-  const normalized = normalizePhone(authUser.phone)
-  if (!normalized) {
+  let normalized: string | null = null
+  if (authUser.phone) {
+    normalized = normalizePhone(authUser.phone)
+    if (!normalized) {
+      return NextResponse.json({ error: 'Teléfono inválido' }, { status: 400 })
+    }
+  } else if (!allowUnverifiedPhone) {
     return NextResponse.json({ error: 'Teléfono inválido' }, { status: 400 })
   }
 
@@ -49,19 +61,23 @@ export async function POST(req: Request) {
   try {
     const client = await db.transaction(async (tx) => {
       // Dedupe: si recepción ya cargó este cliente como walk-in con el mismo
-      // teléfono, lo vinculamos en vez de duplicar su historial.
-      const [walkIn] = await tx
-        .select({ id: clients.id })
-        .from(clients)
-        .where(
-          and(
-            eq(clients.organizationId, organization.id),
-            eq(clients.whatsappE164, normalized),
-            isNull(clients.authUserId),
-            isNull(clients.deletedAt),
-          ),
-        )
-        .limit(1)
+      // teléfono, lo vinculamos en vez de duplicar su historial. Sin
+      // teléfono (solo posible con el bypass provisorio activo) no hay
+      // nada contra qué deduplicar — siempre se crea un cliente nuevo.
+      const [walkIn] = normalized
+        ? await tx
+            .select({ id: clients.id })
+            .from(clients)
+            .where(
+              and(
+                eq(clients.organizationId, organization.id),
+                eq(clients.whatsappE164, normalized),
+                isNull(clients.authUserId),
+                isNull(clients.deletedAt),
+              ),
+            )
+            .limit(1)
+        : []
 
       let row
       if (walkIn) {
@@ -83,10 +99,10 @@ export async function POST(req: Request) {
             organizationId: organization.id,
             firstName: parsed.data.firstName,
             lastName: parsed.data.lastName ?? null,
-            whatsappRaw: authUser.phone,
+            whatsappRaw: authUser.phone ?? null,
             whatsappE164: normalized,
             authUserId: authUser.id,
-            phoneVerifiedAt: new Date(),
+            phoneVerifiedAt: normalized ? new Date() : null,
           })
           .returning()
       }
