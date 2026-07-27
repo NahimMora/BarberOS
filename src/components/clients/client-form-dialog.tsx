@@ -27,6 +27,15 @@ const MONTHS = [
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
 ]
 
+// Prefijo de celular argentino fijo — el campo solo pide lo que sigue
+// (código de área + número), no hace falta que el usuario tipee el +549
+// cada vez.
+const PHONE_PREFIX = '+549'
+
+function stripPhonePrefix(value: string): string {
+  return value.startsWith(PHONE_PREFIX) ? value.slice(PHONE_PREFIX.length) : value
+}
+
 export type ClientRecord = {
   id: string
   firstName: string | null
@@ -184,12 +193,21 @@ export function ClientFormDialog({
           </div>
           <Field>
             <FieldLabel htmlFor="clientWhatsapp">WhatsApp</FieldLabel>
-            <Input
-              id="clientWhatsapp"
-              placeholder="+5491155556666 o 1155556666"
-              value={form.whatsappRaw}
-              onChange={(e) => setForm({ ...form, whatsappRaw: e.target.value })}
-            />
+            <div className="flex items-center gap-2">
+              <span className="shrink-0 rounded-md border border-border/70 bg-muted/45 px-2.5 py-2 text-sm text-muted-foreground">
+                {PHONE_PREFIX}
+              </span>
+              <Input
+                id="clientWhatsapp"
+                placeholder="11 5555 6666"
+                inputMode="numeric"
+                value={stripPhonePrefix(form.whatsappRaw)}
+                onChange={(e) => {
+                  const digits = e.target.value.replace(/\D/g, '')
+                  setForm({ ...form, whatsappRaw: digits ? `${PHONE_PREFIX}${digits}` : '' })
+                }}
+              />
+            </div>
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field>

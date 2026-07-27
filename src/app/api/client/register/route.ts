@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { zodErrorMessage } from '@/lib/validation/zod-error'
 import { and, eq, isNull } from 'drizzle-orm'
 import { db } from '@/lib/db'
-import { clients, organizations, auditLogs } from '@/db/schema'
+import { clients, auditLogs } from '@/db/schema'
 import { getSupabaseAuthUser, getClientSession } from '@/lib/auth/get-client-session'
 import { normalizePhone } from '@/lib/phone/normalize'
 
@@ -27,34 +27,26 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: zodErrorMessage(parsed.error) }, { status: 400 })
   }
 
-  // Teléfono confirmado siempre, sea cual sea el método de entrada (SMS OTP
-  // o Google) — requisito explícito del producto, no solo de la APP.
-  //
-  // PROVISORIO (2026-07-26, ver docs/DECISIONS.md): mientras no haya un
-  // número de Twilio comprado, ALLOW_UNVERIFIED_PHONE_REGISTRATION permite
-  // saltear esta exigencia para poder probar el resto del flujo (agenda,
-  // perfil, historial) desde Google sin teléfono. Apagado por defecto —
-  // hay que sacarlo antes de un lanzamiento real.
-  const allowUnverifiedPhone = process.env.ALLOW_UNVERIFIED_PHONE_REGISTRATION === 'true'
-  if (!allowUnverifiedPhone && (!authUser.phone || !authUser.phone_confirmed_at)) {
-    return NextResponse.json({ error: 'PHONE_NOT_VERIFIED' }, { status: 403 })
-  }
-
+  // El teléfono ya no es obligatorio para registrarse desde la APP (decisión
+  // 2026-07-27, ver docs/DECISIONS.md — reemplaza la exigencia original).
+  // Sin Twilio activo, la carga/verificación de teléfono pasa a hacerse en
+  // persona en la barbería (recepción, vía la web app) en vez de por SMS.
   let normalized: string | null = null
   if (authUser.phone) {
     normalized = normalizePhone(authUser.phone)
     if (!normalized) {
       return NextResponse.json({ error: 'Teléfono inválido' }, { status: 400 })
     }
-  } else if (!allowUnverifiedPhone) {
-    return NextResponse.json({ error: 'Teléfono inválido' }, { status: 400 })
   }
 
-  // v1 opera con una sola organización real (ver AGENTS.md); si se suma
-  // multi-tenant (roadmap v2) esto necesita resolver el org por
-  // subdominio/código de invitación en vez de tomar la única fila.
-  const [organization] = await db.select({ id: organizations.id }).from(organizations).limit(1)
-  if (!organization) {
+  // v1 opera con una sola organización real (ver AGENTS.md). No se resuelve
+  // con "la primera fila de organizations": esa tabla acumuló organizaciones
+  // de prueba (seed de desarrollo, fixtures de tests de RLS) y una consulta
+  // sin orden explícito terminó registrando clientes reales contra una
+  // organización de demo en vez de la real — ver docs/DECISIONS.md
+  // (2026-07-27). DEFAULT_ORGANIZATION_ID fija esto sin ambigüedad.
+  const organizationId = process.env.DEFAULT_ORGANIZATION_ID
+  if (!organizationId) {
     return NextResponse.json({ error: 'No hay organización configurada' }, { status: 500 })
   }
 
@@ -62,7 +54,7 @@ export async function POST(req: Request) {
     const client = await db.transaction(async (tx) => {
       // Dedupe: si recepción ya cargó este cliente como walk-in con el mismo
       // teléfono, lo vinculamos en vez de duplicar su historial. Sin
-      // teléfono (solo posible con el bypass provisorio activo) no hay
+      // teléfono (registro solo con Google, sin cargarlo después) no hay
       // nada contra qué deduplicar — siempre se crea un cliente nuevo.
       const [walkIn] = normalized
         ? await tx
@@ -70,7 +62,7 @@ export async function POST(req: Request) {
             .from(clients)
             .where(
               and(
-                eq(clients.organizationId, organization.id),
+                eq(clients.organizationId, organizationId),
                 eq(clients.whatsappE164, normalized),
                 isNull(clients.authUserId),
                 isNull(clients.deletedAt),
@@ -96,7 +88,7 @@ export async function POST(req: Request) {
         ;[row] = await tx
           .insert(clients)
           .values({
-            organizationId: organization.id,
+            organizationId: organizationId,
             firstName: parsed.data.firstName,
             lastName: parsed.data.lastName ?? null,
             whatsappRaw: authUser.phone ?? null,
@@ -108,7 +100,7 @@ export async function POST(req: Request) {
       }
 
       await tx.insert(auditLogs).values({
-        organizationId: organization.id,
+        organizationId: organizationId,
         actorClientId: row.id,
         action: 'client.registered',
         entity: 'clients',

@@ -5,7 +5,78 @@
 > duplica `AGENTS.md`/`docs/PRODUCT.md` (fuente de verdad de alcance del
 > producto) — esto es el "por qué" de decisiones puntuales.
 
+## 2026-07-27 — DEFAULT_ORGANIZATION_ID explícito para el registro de clientes
+
+**Decisión:** `POST /api/client/register` resuelve la organización con
+`process.env.DEFAULT_ORGANIZATION_ID` en vez de `SELECT id FROM
+organizations LIMIT 1`.
+
+**Motivo:** la tabla `organizations` tiene 4 filas — la real ("Fusion
+Barber", bootstrapeada en producción), una de seed de desarrollo
+("Barbería Demo", con 43 sucursales y datos viejos) y dos fixtures
+residuales de una corrida local de `rls.test.ts` contra la base real (no
+es un problema de CI — el job `rls` de GitHub Actions usa un contenedor
+Postgres descartable, aislado; esto vino de otro lado). `LIMIT 1` sin
+`ORDER BY` no tiene garantía de qué fila devuelve, y en la práctica
+devolvía "Barbería Demo" — el primer cliente real registrado desde la APP
+("Emiliano Martinez") quedó ahí en vez de en "Fusion Barber", por eso no
+aparecía en la web.
+
+**Alternativas rechazadas:** `ORDER BY created_at LIMIT 1` — seguiría
+siendo ambiguo/incorrecto porque "Barbería Demo" es más vieja que "Fusion
+Barber", así que el orden por fecha tampoco elegía la correcta. Limpiar
+las filas de más y confiar de nuevo en `LIMIT 1` — más frágil a futuro,
+cualquier corrida de seed o test mal aislada vuelve a romperlo.
+
+**Consecuencias:** `DEFAULT_ORGANIZATION_ID=697fd668-5fb2-4915-9558-dec327b3e5ee`
+en `.env`/`.env.production.local` — Render necesita la misma variable
+cargada a mano en su dashboard. El cliente mal registrado se migró a mano
+(`UPDATE clients SET organization_id = ...`) a la organización correcta.
+Las dos organizaciones de test residuales no se borraron (acción
+destructiva bloqueada por el classifier de auto mode) — quedan como
+basura inofensiva mientras `DEFAULT_ORGANIZATION_ID` esté seteado.
+
+**Revisar nuevamente cuando:** se encare multi-tenant real (v2) — ahí
+`DEFAULT_ORGANIZATION_ID` deja de alcanzar y hace falta resolver la
+organización por subdominio/código de invitación como ya anotaba el
+comentario original en el código.
+
+## 2026-07-27 — Teléfono confirmado deja de ser obligatorio para registrarse desde la APP
+
+**Decisión:** se saca la exigencia de teléfono confirmado en
+`POST /api/client/register` y en la APP (ya no existe el estado
+`phone-unverified` ni la pantalla de verificar teléfono) — reemplaza la
+decisión "provisoria" de abajo (2026-07-26), ahora es el comportamiento
+definitivo, no una flag de testing.
+
+**Motivo:** pedido explícito del usuario. El plan pasa a ser que el
+teléfono se cargue/confirme en persona en la barbería (recepción, desde
+la web app) cuando el cliente se presente sin haberlo hecho desde la APP,
+en vez de depender de verificación por SMS.
+
+**Alternativas rechazadas:** mantener la flag `ALLOW_UNVERIFIED_PHONE_REGISTRATION`/
+`EXPO_PUBLIC_ALLOW_UNVERIFIED_PHONE` como testing-only y reactivar la
+exigencia más adelante — descartado, el usuario pidió sacarla, no
+pausarla. Las variables quedan comentadas en los `.env*` por si se
+reconsidera.
+
+**Consecuencias:** un `clients` registrado solo con Google puede no tener
+ningún teléfono cargado — `whatsapp_e164`/`whatsapp_raw` quedan `null`
+indefinidamente hasta que alguien lo complete a mano (recepción o el
+propio cliente desde "Mi perfil", que hoy no expone editar el teléfono
+tampoco — pendiente si se quiere permitir). Sin teléfono no hay dedupe
+posible contra un walk-in cargado por recepción con ese mismo número —
+puede terminar habiendo dos filas de `clients` para la misma persona si
+después carga el teléfono real por otro lado.
+
+**Revisar nuevamente cuando:** se compre un número de Twilio — ahí es una
+decisión de producto nueva si se vuelve a exigir verificación o se deja
+opcional como quedó ahora.
+
 ## 2026-07-26 — Bypass provisorio de teléfono confirmado en el registro de clientes
+
+> **Superada por la decisión del 2026-07-27 de arriba** — dejó de ser
+> "provisoria", el teléfono ya no es obligatorio de forma permanente.
 
 **Decisión:** `POST /api/client/register` y la APP (`lib/auth-context.tsx`)
 permiten saltear la exigencia de teléfono confirmado cuando
