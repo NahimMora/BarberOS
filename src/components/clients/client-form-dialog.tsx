@@ -62,6 +62,7 @@ type ClientForm = {
   birthdayMonth: string
   profession: string
   whatsappRaw: string
+  noPhone: boolean
   notes: string
   consentData: boolean
   consentWhatsapp: boolean
@@ -75,6 +76,7 @@ const emptyForm: ClientForm = {
   birthdayMonth: '',
   profession: '',
   whatsappRaw: '',
+  noPhone: false,
   notes: '',
   consentData: false,
   consentWhatsapp: false,
@@ -107,6 +109,7 @@ export function ClientFormDialog({
         birthdayMonth: client.birthdayMonth ? String(client.birthdayMonth) : '',
         profession: client.profession ?? '',
         whatsappRaw: client.whatsappRaw ?? '',
+        noPhone: !client.whatsappRaw,
         notes: client.notes ?? '',
         consentData: client.consentData,
         consentWhatsapp: client.consentWhatsapp,
@@ -130,7 +133,7 @@ export function ClientFormDialog({
         birthdayDay: form.birthdayDay ? Number(form.birthdayDay) : null,
         birthdayMonth: form.birthdayMonth ? Number(form.birthdayMonth) : null,
         profession: form.profession,
-        whatsappRaw: form.whatsappRaw,
+        whatsappRaw: form.noPhone ? '' : form.whatsappRaw,
         notes: form.notes,
       }
       if (!client) {
@@ -193,21 +196,38 @@ export function ClientFormDialog({
           </div>
           <Field>
             <FieldLabel htmlFor="clientWhatsapp">WhatsApp</FieldLabel>
-            <div className="flex items-center gap-2">
-              <span className="shrink-0 rounded-md border border-border/70 bg-muted/45 px-2.5 py-2 text-sm text-muted-foreground">
-                {PHONE_PREFIX}
-              </span>
-              <Input
-                id="clientWhatsapp"
-                placeholder="11 5555 6666"
-                inputMode="numeric"
-                value={stripPhonePrefix(form.whatsappRaw)}
-                onChange={(e) => {
-                  const digits = e.target.value.replace(/\D/g, '')
-                  setForm({ ...form, whatsappRaw: digits ? `${PHONE_PREFIX}${digits}` : '' })
-                }}
-              />
-            </div>
+            {form.noPhone ? (
+              <p className="rounded-md border border-dashed border-border/70 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                Sin celular — pedir en el próximo turno
+              </p>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="shrink-0 rounded-md border border-border/70 bg-muted/45 px-2.5 py-2 text-sm text-muted-foreground">
+                  {PHONE_PREFIX}
+                </span>
+                <Input
+                  id="clientWhatsapp"
+                  placeholder="11 5555 6666"
+                  inputMode="numeric"
+                  value={stripPhonePrefix(form.whatsappRaw)}
+                  onChange={(e) => {
+                    const digits = e.target.value.replace(/\D/g, '')
+                    setForm({ ...form, whatsappRaw: digits ? `${PHONE_PREFIX}${digits}` : '' })
+                  }}
+                />
+              </div>
+            )}
+          </Field>
+          <Field orientation="horizontal" className="rounded-xl border border-border/70 bg-muted/45 p-3">
+            <Checkbox
+              id="clientNoPhone"
+              checked={form.noPhone}
+              onCheckedChange={(checked) => setForm({ ...form, noPhone: checked, whatsappRaw: checked ? '' : form.whatsappRaw })}
+            />
+            <FieldContent>
+              <FieldLabel htmlFor="clientNoPhone">No tiene celular</FieldLabel>
+              <p className="text-xs text-muted-foreground">Se puede completar en un próximo turno.</p>
+            </FieldContent>
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field>
