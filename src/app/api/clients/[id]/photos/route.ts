@@ -112,7 +112,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
   const storagePath = `${user.organizationId}/client-photos/${id}/${crypto.randomUUID()}-${safeName}`
-  await uploadToR2(storagePath, Buffer.from(await file.arrayBuffer()), file.type)
+  try {
+    await uploadToR2(storagePath, Buffer.from(await file.arrayBuffer()), file.type)
+  } catch (err) {
+    console.error('uploadToR2 failed', err)
+    return NextResponse.json({ error: 'No se pudo subir la foto al storage' }, { status: 502 })
+  }
 
   const [record] = await db.transaction(async (tx) => {
     const [fileRow] = await tx

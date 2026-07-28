@@ -57,13 +57,19 @@ export function CompleteAppointmentPhotoDialog({
         body: formData,
       })
       if (!res.ok) {
-        const json = await res.json()
-        toast.error(json.error ?? 'Error al subir la foto')
+        const json = await res.json().catch(() => null)
+        toast.error(json?.error ?? `Error al subir la foto (${res.status})`)
         return
       }
       toast.success('Foto agregada al historial')
       reset()
       onOpenChange(false)
+    } catch {
+      // fetch puede rechazar por red caída, o res.json() fallar si el
+      // servidor devolvió algo que no es JSON — sin este catch, esos casos
+      // quedaban completamente silenciosos (sin toast, sin indicio de que
+      // falló).
+      toast.error('No se pudo subir la foto — revisá tu conexión e intentá de nuevo')
     } finally {
       setUploading(false)
     }
