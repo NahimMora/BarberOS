@@ -12,6 +12,7 @@ import {
   users,
 } from '@/db/schema'
 import { db } from '@/lib/db'
+import { notifyUser } from '@/lib/notifications/send-push'
 import {
   validateNoOverlap,
   validateBarberAvailability,
@@ -136,7 +137,7 @@ export async function createAppointment(input: CreateAppointmentInput) {
   const historyUserId = actor.type === 'staff' ? actor.userId : null
   const historyClientId = actor.type === 'client' ? actor.clientId : null
 
-  return db.transaction(async (tx) => {
+  const appointment = await db.transaction(async (tx) => {
     validateBranchWorkingHours(branch, startAt, endAt)
     await validateBarberAvailability(tx, organizationId, barberId, branchId, startAt, endAt)
     await validateNoOverlap(tx, barberId, startAt, endAt)
@@ -203,4 +204,19 @@ export async function createAppointment(input: CreateAppointmentInput) {
 
     return appointment
   })
+
+  const time = new Intl.DateTimeFormat('es-AR', {
+    timeZone: 'America/Argentina/Buenos_Aires',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(startAt)
+  void notifyUser(organizationId, barberId, {
+    title: 'Nuevo turno',
+    body: `${branch.name} · ${time}hs`,
+    url: '/agenda',
+    tag: `appointment-${appointment.id}`,
+  })
+
+  return appointment
 }

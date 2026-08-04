@@ -28,6 +28,7 @@ import {
 import type { AppointmentStatus } from '@/lib/appointments/types'
 import { canAccessAppointment } from '@/lib/auth/authorization'
 import { barberBelongsToBranch } from '@/lib/auth/organization-scope'
+import { notifyUser } from '@/lib/notifications/send-push'
 
 const patchSchema = z.discriminatedUnion('action', [
   z.object({
@@ -316,6 +317,19 @@ async function handleReschedule(
     })
 
     return updated
+  })
+
+  const time = new Intl.DateTimeFormat('es-AR', {
+    timeZone: 'America/Argentina/Buenos_Aires',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(startAt)
+  void notifyUser(current.organizationId, newBarberId, {
+    title: 'Turno reprogramado',
+    body: `Nuevo horario: ${time}hs`,
+    url: '/agenda',
+    tag: `appointment-${id}`,
   })
 
   return NextResponse.json(result)

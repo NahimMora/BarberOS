@@ -56,6 +56,9 @@ export const appointments = pgTable('appointments', {
   endAt: timestamp('end_at', { withTimezone: true }).notNull(),
   cancelReason: text('cancel_reason'),
   notes: text('notes'),
+  // Marca cuándo se mandó el push de "dentro de 30 min" — evita reenvíos
+  // si el cron corre más seguido que la ventana de recordatorio.
+  reminderSentAt: timestamp('reminder_sent_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [

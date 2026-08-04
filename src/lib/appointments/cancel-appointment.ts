@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { appointments, appointmentHistory, auditLogs, domainEvents } from '@/db/schema'
+import { notifyUser } from '@/lib/notifications/send-push'
 import {
   assertValidTransition,
   AppointmentTransitionError,
@@ -34,7 +35,7 @@ export async function changeAppointmentStatus(
   const userId = actor.type === 'staff' ? actor.userId : null
   const actorClientId = actor.type === 'client' ? actor.clientId : null
 
-  return db.transaction(async (tx) => {
+  const updated = await db.transaction(async (tx) => {
     const [updated] = await tx
       .update(appointments)
       .set({
@@ -77,4 +78,21 @@ export async function changeAppointmentStatus(
 
     return updated
   })
+
+  if (newStatus === 'cancelled') {
+    const time = new Intl.DateTimeFormat('es-AR', {
+      timeZone: 'America/Argentina/Buenos_Aires',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(current.startAt)
+    void notifyUser(current.organizationId, current.barberId, {
+      title: 'Turno cancelado',
+      body: `Turno de las ${time}hs cancelado${cancelReason ? `: ${cancelReason}` : ''}`,
+      url: '/agenda',
+      tag: `appointment-${id}`,
+    })
+  }
+
+  return updated
 }

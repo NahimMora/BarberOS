@@ -278,6 +278,39 @@ demás (`files` de staff/documentos) sigue en Supabase Storage sin cambios.
   object lock ni server-side encryption gestionada — no relevante para el
   uso actual (solo `PutObject`/`GetObject`/`DeleteObject`).
 
+## Notificaciones push (Web Push)
+
+**Implementado** (`src/lib/notifications/send-push.ts`,
+`public/sw.js`) — push del navegador para barberos: nuevo turno,
+cancelación, reprogramación y recordatorio 30 min antes.
+
+- **Variables de entorno** (ver `.env.example`): `VAPID_PUBLIC_KEY`,
+  `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` (par generado una sola vez con
+  `npx web-push generate-vapid-keys` — **no regenerarlo**, invalidaría
+  todas las suscripciones activas), `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (igual
+  a `VAPID_PUBLIC_KEY`, expuesta al cliente), y `CRON_SECRET` (secreto
+  random para el cron de recordatorios, abajo). **Recordar:** Render no
+  lee `.env.production.local` — estas 5 variables se cargan a mano en
+  Render → Environment cuando se deployee esta feature, igual que el
+  resto de las variables de este documento.
+- **Render Cron Job para el recordatorio de 30 min:** el endpoint
+  `POST /api/cron/appointment-reminders` lo tiene que llamar un scheduler
+  externo — no hay cron dentro del proceso Node. En Render: New → Cron
+  Job → mismo repo → schedule `*/5 * * * *` → comando:
+  ```
+  curl -sf -X POST https://<dominio>/api/cron/appointment-reminders \
+    -H "x-cron-secret: $CRON_SECRET"
+  ```
+  (`CRON_SECRET` como variable de entorno del propio Cron Job, mismo
+  valor que en el Web Service). **Este alta hay que hacerla a mano en el
+  dashboard de Render** — no se puede automatizar desde el repo.
+- **Limitación conocida de iOS:** Safari solo entrega Web Push si el
+  sitio está instalado como PWA ("Agregar a inicio"), desde iOS 16.4+. En
+  Safari normal (pestaña de navegador) el permiso de notificaciones ni
+  siquiera aparece. `public/manifest.json` + `apple-touch-icon` ya están
+  para que la instalación como PWA funcione; no hay forma de evitar este
+  requisito de Apple.
+
 ## App de clientes
 
 Config operativa para que la APK (`app-BarberOS`, repo separado, ver

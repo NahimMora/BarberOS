@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { NotificationBell } from '@/components/notifications/notification-bell'
 import { createClient } from '@/lib/supabase/client'
 import type { AppUser } from '@/lib/auth/get-session'
 
@@ -107,21 +108,24 @@ export function AppHeader({ user }: { user: AppUser }) {
           <span className="text-sm font-semibold capitalize">{today}</span>
         </div>
       </div>
-      <DropdownMenu>
-        <DropdownMenuTrigger className="flex min-h-10 items-center gap-2 rounded-full border border-border/70 bg-card py-1 pl-1 pr-3 shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <Avatar className="size-8">
-            <AvatarFallback className="text-xs">{initials}</AvatarFallback>
-          </Avatar>
-          <span className="hidden text-sm font-semibold sm:block">{user.fullName}</span>
-          <Badge variant="secondary" className="hidden lg:inline-flex">{roleLabel[user.role]}</Badge>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={handleLogout}>
-            <LogOut data-icon="inline-start" />
-            Cerrar sesión
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <div className="flex items-center gap-2">
+        <NotificationBell />
+        <DropdownMenu>
+          <DropdownMenuTrigger className="flex min-h-10 items-center gap-2 rounded-full border border-border/70 bg-card py-1 pl-1 pr-3 shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <Avatar className="size-8">
+              <AvatarFallback className="text-xs">{initials}</AvatarFallback>
+            </Avatar>
+            <span className="hidden text-sm font-semibold sm:block">{user.fullName}</span>
+            <Badge variant="secondary" className="hidden lg:inline-flex">{roleLabel[user.role]}</Badge>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={handleLogout}>
+              <LogOut data-icon="inline-start" />
+              Cerrar sesión
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
     </header>
   )
 }
