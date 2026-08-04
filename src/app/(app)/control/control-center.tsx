@@ -141,6 +141,7 @@ export function ControlCenter() {
       <PageHeader
         eyebrow="Control"
         title="Trazabilidad"
+        description="Auditoría de acciones sensibles, eventos de negocio y del sistema."
       />
 
       <Card>

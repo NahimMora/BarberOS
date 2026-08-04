@@ -1,6 +1,7 @@
 # Estado actual — BarberOS
 
-> **Última actualización:** 2026-07-20 (portal de cliente).
+> **Última actualización:** 2026-08-04 (notificaciones push, Inicio con
+> estadísticas/proyecciones, tema Barbershop Dark).
 > Documento vivo — actualizar cada vez que cambie el estado real, no
 > dejar que quede desactualizado. Antes de confiar en esto para planificar
 > trabajo, cruzar con `git log --oneline` y `git status` — la
@@ -32,6 +33,21 @@
   de cortes con fotos (Cloudflare R2) visibles desde la ficha de cliente de
   la web y cargables al completar un turno. Contrato completo en
   `docs/MOBILE_APP_BRIEF.md`.
+- **Notificaciones push para barberos** (2026-08-04): Web Push API
+  (`web-push`, VAPID, `public/sw.js`, campana en `app-header.tsx`) para
+  "nuevo turno", "cancelado", "reprogramado" y "turno en 30 minutos"
+  (`src/app/api/cron/appointment-reminders`). El cron de recordatorio
+  necesita un Render Cron Job dado de alta a mano contra producción —
+  todavía no se hizo, ver `docs/DEPLOYMENT.md`.
+- **Inicio rediseñado como panel de estadísticas y proyecciones**
+  (2026-08-04): tendencia de facturación 30 días, proyección run-rate del
+  mes, ocupación de agenda por día de semana, ausentismo, ranking de
+  barberos/servicios (`src/lib/dashboard/get-dashboard-stats.ts`). Esto
+  pull-eó "Dashboards avanzados" (v1.3) de `docs/ROADMAP.md` a alcance
+  activo — ver `docs/DECISIONS.md`.
+- **Tema visual Barbershop Dark** (2026-08-04): reemplaza la paleta Soft
+  Studio (near-white) por un tema único oscuro cálido, sin modo claro ni
+  toggle — ver `docs/UI_STYLE_GUIDE.md` y `docs/DECISIONS.md`.
 
 ## Qué funciona parcialmente
 
@@ -82,4 +98,11 @@ repo — verificar con `git status` si esto sigue vigente:
 3. Construir la APK en `app-BarberOS` (repo separado) siguiendo
    `docs/MOBILE_APP_BRIEF.md`; configurar Twilio/Google en Supabase Auth;
    activar `client_booking_enabled` recién cuando esté probada.
-4. Después de eso: encarar la lista priorizada en `docs/BACKLOG.md`.
+4. Cargar las variables de entorno de notificaciones push
+   (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`,
+   `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `CRON_SECRET`) en Render y dar de alta
+   el Render Cron Job del recordatorio de 30 min — ver
+   `docs/DEPLOYMENT.md` § Notificaciones push. Sin esto, el código ya
+   deployado no manda recordatorios (el resto de los eventos push sí
+   funcionan, no dependen del cron).
+5. Después de eso: encarar la lista priorizada en `docs/BACKLOG.md`.

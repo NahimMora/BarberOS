@@ -5,6 +5,109 @@
 > duplica `AGENTS.md`/`docs/PRODUCT.md` (fuente de verdad de alcance del
 > producto) — esto es el "por qué" de decisiones puntuales.
 
+## 2026-08-04 — Notificaciones push web para barberos (nuevo alcance activo)
+
+**Decisión:** se agrega un sistema de notificaciones push del navegador
+(Web Push API estándar: `web-push`, VAPID, service worker en
+`public/sw.js`) para avisar a los barberos de "nuevo turno", "turno
+cancelado", "turno reprogramado" y "turno en 30 minutos". No es una
+feature del roadmap original, es alcance nuevo.
+
+**Motivo:** pedido explícito del usuario. Sirve directo al trabajo de
+"Agendar" (uno de los 4 trabajos de `AGENTS.md`) — un barbero que se
+entera al instante de un turno nuevo o cancelado gestiona mejor su día.
+
+**Alternativas rechazadas:** WhatsApp — es justamente lo que
+`docs/ROADMAP.md` v1.1 mantiene fuera de alcance ("WhatsApp automático"
+prohibido explícitamente en `AGENTS.md`); push web es un canal distinto,
+sin ese conflicto. Un sistema de notificaciones in-app con bandeja/
+historial persistente — se descartó para no duplicar la agenda como
+fuente de verdad de qué pasó con cada turno; el canal real es el push del
+navegador, no una inbox nueva.
+
+**Consecuencias:** requiere que cada barbero acepte el permiso de
+notificaciones del navegador (opt-in, botón en la campana del header) y,
+en iPhone, que instale el sitio como PWA (Safari no entrega push en
+Safari normal, ver `docs/DEPLOYMENT.md`). El recordatorio de 30 min
+depende de un cron externo (Render Cron Job) que hay que dar de alta a
+mano — no corre solo.
+
+**Revisar nuevamente cuando:** si el uso real muestra que los barberos
+prefieren WhatsApp a pesar de la fricción de instalar la PWA en iPhone,
+reconsiderar si vale la pena adelantar el canal WhatsApp de v1.1.
+
+## 2026-08-04 — Ranking de barberos, ocupación y tendencias salen del roadmap (v1.3) a alcance activo
+
+**Decisión:** se implementa en el panel de Inicio lo que
+`docs/ROADMAP.md` v1.3 tenía como "Dashboards avanzados: ranking de
+barberos, ocupación de agenda, tendencias" — con una condición: son
+**proyecciones estadísticas simples** (promedio, run-rate mensual,
+variación % vs mes anterior), calculadas con SQL sobre `sales` y
+`appointments` (`src/lib/dashboard/get-dashboard-stats.ts`,
+`src/lib/dashboard/projections.ts`). Nada de IA/OpenAI — eso sigue
+prohibido en v1 (`v1.4` del roadmap, sin tocar).
+
+**Motivo:** pedido explícito del usuario ("panel de estadísticas y
+predicciones" para Inicio) — la nota de `docs/ROADMAP.md` exige
+justamente una decisión explícita para sacar algo de ahí, y esto lo es.
+
+**Alternativas rechazadas:** un modelo predictivo real (regresión,
+forecasting con librería estadística) — se descartó por alcance: la
+regla de los 4 trabajos no pide precisión de forecasting, pide que el
+dueño/encargado entienda para dónde va el mes sin abrir una planilla;
+un promedio/run-rate ya resuelve eso. Traer `recharts` u otra librería de
+gráficos — se descartó a favor de SVG inline hecho a mano (2-3 formas
+simples: tendencia y barras), evitando una dependencia nueva para poco.
+
+**Consecuencias:** "clientes recurrentes" y "promociones por fidelidad"
+(el resto de v1.3) siguen fuera de alcance, no se tocaron — ver
+`docs/ROADMAP.md`. El home ("Inicio") deja de ser solo un panel de
+accesos rápidos y pasa a liderar con tendencias/proyección; la agenda del
+día y los accesos directos bajaron de posición pero siguen en la página.
+
+**Revisar nuevamente cuando:** si el volumen de datos crece mucho (varias
+sucursales, años de historial), evaluar si las queries de agregación
+necesitan materialización/caché en vez de calcularse en cada carga de
+Inicio.
+
+## 2026-08-04 — Barbershop Dark reemplaza Soft Studio (un solo tema, oscuro)
+
+**Decisión:** se reemplaza por completo la paleta "Soft Studio" (canvas
+near-white, primario verde) documentada en `docs/UI_STYLE_GUIDE.md` por
+una sola paleta oscura cálida ("Barbershop Dark": canvas espresso,
+primario dorado/latón, rojo barber-pole como firma). No queda modo claro
+ni toggle — `.dark` se aplica fijo en `<html>` (`src/app/layout.tsx`)
+solo para que los ajustes `dark:` de shadcn/ui se apliquen siempre. Se
+sacó la dependencia `next-themes` (ya no hace falta, `sonner.tsx` fija
+`theme="dark"`).
+
+**Motivo:** pedido explícito del usuario de darle a la app un tono menos
+formal/corporativo y más "de barbería" — la dirección Soft Studio (Fase 1,
+2026-07-xx) había ido hacia un near-white neutro pensando en un tono
+"artisan workshop" claro, que ya no se consideraba representativo del
+producto.
+
+**Alternativas rechazadas:** mantener ambos temas con un toggle
+claro/oscuro (`next-themes` + `ThemeProvider`) — se descartó porque el
+pedido fue explícitamente "definitivamente", una sola dirección, no una
+preferencia de usuario; mantener el verde como primario en el nuevo fondo
+oscuro — se descartó a favor del dorado/latón ya presente (sin usar) en
+el bloque `.dark` anterior, que lee mejor como acento metálico de
+barbería.
+
+**Consecuencias:** la sección "Family resemblance with Escuela SaaS" de
+`docs/UI_STYLE_GUIDE.md` queda parcialmente desactualizada en lo que
+respecta a color (BarberOS verde vs Escuela SaaS azul ya no aplica); las
+convenciones estructurales que ahí se listan (headers de tabla, peso de
+títulos, badges de estado, popover de rol, radios de controles) siguen
+vigentes. Cualquier captura/mockup de UI generado antes de esta fecha
+queda desactualizado.
+
+**Revisar nuevamente cuando:** si en algún momento se necesita un modo
+claro (ej. para uso en exteriores muy luminosos), habría que reintroducir
+`next-themes` y decidir si el modo claro vuelve a ser Soft Studio o una
+versión clara de Barbershop Dark.
+
 ## 2026-07-27 — DEFAULT_ORGANIZATION_ID explícito para el registro de clientes
 
 **Decisión:** `POST /api/client/register` resuelve la organización con

@@ -778,6 +778,7 @@ export function OperationConsole() {
       <PageHeader
         eyebrow="Configuración del negocio"
         title="Operación"
+        description="Sucursales, equipo y servicios que alimentan la agenda y la caja."
       />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

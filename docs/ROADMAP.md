@@ -11,7 +11,11 @@
 ## v1.1 — Comunicación y carga de datos
 
 - WhatsApp con plantillas aprobadas, recordatorios de turno, registro de
-  notificaciones enviadas.
+  notificaciones enviadas. **Nota (2026-08-04):** el recordatorio de turno
+  en sí ya existe vía **push del navegador**, no WhatsApp — ver
+  `docs/DECISIONS.md` y `src/app/api/cron/appointment-reminders/route.ts`.
+  Lo que sigue fuera de acá es específicamente el canal WhatsApp
+  (`WhatsApp automático` sigue prohibido en v1 por `AGENTS.md`).
 - Importación CSV/Excel (desde Google Sheets/Excel/papel digitalizado) de
   clientes, servicios y eventualmente historial — para negocios que
   migran desde planillas.
@@ -25,8 +29,13 @@
 
 ## v1.3 — Dashboards avanzados
 
-- Ranking de barberos, ocupación de agenda, tendencias, clientes
-  recurrentes, promociones por fidelidad.
+- ~~Ranking de barberos, ocupación de agenda, tendencias~~ — salió de acá
+  el 2026-08-04 (decisión explícita, ver `docs/DECISIONS.md`): implementado
+  en el panel de Inicio (`src/lib/dashboard/get-dashboard-stats.ts`,
+  `src/app/(app)/dashboard/dashboard-view.tsx`) como proyecciones
+  estadísticas simples (promedios/run-rate), no IA/ML.
+- Clientes recurrentes, promociones por fidelidad — siguen acá, no se
+  tocaron.
 
 ## v1.4 — IA sobre datos agregados
 

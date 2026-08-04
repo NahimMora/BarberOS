@@ -246,6 +246,7 @@ export function ExportCenter({
       <PageHeader
         eyebrow="Datos"
         title="Exportaciones"
+        description="Descargá ventas, caja y comisiones en CSV o Excel."
       />
 
       <Card>

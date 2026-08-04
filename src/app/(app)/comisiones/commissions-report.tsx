@@ -198,6 +198,7 @@ export function CommissionsReport({ role }: { role: 'admin' | 'barber' }) {
       <PageHeader
         eyebrow="Dinero"
         title="Comisiones"
+        description="Comisión por barbero y período, según la tasa vigente en cada venta."
         actions={(
           <div className="relative">
             <CalendarRange className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />

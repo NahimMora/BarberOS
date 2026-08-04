@@ -78,6 +78,7 @@ export default function ClientesPage() {
       <PageHeader
         eyebrow="Relaciones"
         title="Clientes"
+        description="Ficha, contacto y turnos de cada cliente."
         actions={(
           <Button onClick={openNew} size="lg" className="min-h-10">
             <Plus data-icon="inline-start" />

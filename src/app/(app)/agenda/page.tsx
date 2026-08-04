@@ -619,6 +619,7 @@ export default function AgendaPage() {
       <PageHeader
         eyebrow="Agenda diaria"
         title="Turnos"
+        description="Disponibilidad, cambios de estado y reprogramación por barbero."
         actions={(
           <Button onClick={openNew} size="lg" className="min-h-10">
             <Plus data-icon="inline-start" />
