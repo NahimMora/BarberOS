@@ -27,6 +27,8 @@ import {
   getLocalMonthUtcRange,
 } from '@/lib/datetime/local-day-range'
 import { db } from '@/lib/db'
+import { EMPTY_DASHBOARD_STATS, getDashboardStats } from '@/lib/dashboard/get-dashboard-stats'
+import type { DashboardStats } from '@/lib/dashboard/get-dashboard-stats'
 
 export type DashboardAgendaItem = {
   id: string
@@ -69,6 +71,7 @@ export type DashboardData = {
   } | null
   branches: DashboardBranch[]
   agenda: DashboardAgendaItem[]
+  stats: DashboardStats
 }
 
 export async function getDashboardData(
@@ -114,6 +117,7 @@ export async function getDashboardData(
       calendarMonth,
       dayRange,
       monthRange,
+      now,
     )
   }
 
@@ -122,7 +126,7 @@ export async function getDashboardData(
   }
 
   const branchIds = branchRows.map((branch) => branch.id)
-  const [saleRows, appointmentRows, openCashRows, agendaRows, pendingRows] = await Promise.all([
+  const [saleRows, appointmentRows, openCashRows, agendaRows, pendingRows, stats] = await Promise.all([
     db
       .select({
         branchId: sales.branchId,
@@ -192,6 +196,16 @@ export async function getDashboardData(
           eq(commissions.status, 'pending'),
         ))
       : Promise.resolve([{ amount: '0.00' }]),
+    getDashboardStats({
+      organizationId: user.organizationId,
+      branchIds,
+      timeZone,
+      calendarDate,
+      calendarMonth,
+      monthRange,
+      now,
+      includeRankings: true,
+    }),
   ])
 
   const salesByBranch = new Map(saleRows.map((row) => [row.branchId, row]))
@@ -236,6 +250,7 @@ export async function getDashboardData(
     barberMetrics: null,
     branches: branchData,
     agenda: agendaRows,
+    stats,
   }
 }
 
@@ -247,9 +262,10 @@ async function getBarberDashboard(
   calendarMonth: string,
   dayRange: { start: Date; end: Date },
   monthRange: { start: Date; end: Date },
+  now: Date,
 ): Promise<DashboardData> {
   const branchIds = branchRows.map((branch) => branch.id)
-  const [agendaRows, completedRows, revenueRows, commissionRows] = await Promise.all([
+  const [agendaRows, completedRows, revenueRows, commissionRows, stats] = await Promise.all([
     getAgendaRows(user.organizationId, branchIds, dayRange, user.id),
     db
       .select({ count: sql<number>`count(*)::int` })
@@ -282,6 +298,17 @@ async function getBarberDashboard(
         eq(commissions.period, calendarMonth),
         ne(commissions.status, 'cancelled'),
       )),
+    getDashboardStats({
+      organizationId: user.organizationId,
+      branchIds,
+      timeZone,
+      calendarDate,
+      calendarMonth,
+      monthRange,
+      now,
+      barberId: user.id,
+      includeRankings: false,
+    }),
   ])
 
   return {
@@ -312,6 +339,7 @@ async function getBarberDashboard(
       cashOpenedAt: null,
     })),
     agenda: agendaRows,
+    stats,
   }
 }
 
@@ -387,6 +415,7 @@ function emptyDashboard(
       : null,
     branches: [],
     agenda: [],
+    stats: EMPTY_DASHBOARD_STATS,
   }
 }
 

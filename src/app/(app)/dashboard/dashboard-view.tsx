@@ -7,7 +7,11 @@ import {
   Clock3,
   Scissors,
   Store,
+  TrendingDown,
+  TrendingUp,
+  Trophy,
   Users,
+  UserX,
   WalletCards,
 } from 'lucide-react'
 import { PageHeader } from '@/components/page-header'
@@ -36,6 +40,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { RevenueTrendChart } from '@/components/dashboard/revenue-trend-chart'
+import { WeekdayOccupancyChart } from '@/components/dashboard/weekday-occupancy-chart'
 import type { AppUser } from '@/lib/auth/get-session'
 import type { DashboardData } from '@/lib/dashboard/get-dashboard-data'
 import { formatArs } from '@/lib/money/display'
@@ -44,15 +50,15 @@ import { cn } from '@/lib/utils'
 const roleCopy = {
   admin: {
     eyebrow: 'Control general',
-    description: 'Ventas, turnos, cajas y comisiones de toda la operación.',
+    description: 'Tendencias, proyecciones y pulso operativo de toda la organización.',
   },
   receptionist: {
     eyebrow: 'Frente de atención',
-    description: 'Agenda, cobros y estado de caja de tus sucursales.',
+    description: 'Tendencias de tus sucursales, agenda y estado de caja.',
   },
   barber: {
     eyebrow: 'Jornada personal',
-    description: 'Tu agenda de hoy y el resultado acumulado del mes.',
+    description: 'Tu tendencia del mes, tu agenda de hoy y el resultado acumulado.',
   },
 }
 
@@ -108,6 +114,7 @@ export function DashboardView({
   const dayLabel = formatDateLabel(data.calendarDate)
   const monthLabel = formatMonthLabel(data.calendarMonth)
   const actions = quickActions.filter((action) => action.roles.includes(user.role))
+  const hasRankings = data.stats.topBarbers.length > 0 || data.stats.topServices.length > 0
 
   return (
     <div className="flex flex-col gap-8">
@@ -125,7 +132,14 @@ export function DashboardView({
 
       {user.role === 'barber' && data.barberMetrics
         ? <BarberMetrics data={data} monthLabel={monthLabel} />
-        : <OperationMetrics data={data} monthLabel={monthLabel} />}
+        : <TodayStrip data={data} />}
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <TrendCard data={data} monthLabel={monthLabel} />
+        <OccupancyCard data={data} />
+      </div>
+
+      {hasRankings ? <RankingsCard data={data} monthLabel={monthLabel} /> : null}
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(18rem,0.7fr)]">
         <TodayAgenda data={data} />
@@ -137,16 +151,10 @@ export function DashboardView({
   )
 }
 
-function OperationMetrics({
-  data,
-  monthLabel,
-}: {
-  data: DashboardData
-  monthLabel: string
-}) {
+function TodayStrip({ data }: { data: DashboardData }) {
   return (
     <section className="overflow-hidden rounded-3xl border border-border">
-      <div className="grid divide-y divide-border/70 sm:grid-cols-2 sm:divide-x sm:divide-y-0 xl:grid-cols-4">
+      <div className="grid divide-y divide-border/70 sm:grid-cols-2 sm:divide-x sm:divide-y-0">
         <Metric
           label="Facturación de hoy"
           value={formatArs(data.summary.todayRevenue)}
@@ -155,32 +163,13 @@ function OperationMetrics({
           emphasis
         />
         <Metric
-          label={`Facturación · ${monthLabel}`}
-          value={formatArs(data.summary.monthRevenue)}
-          note="Total neto cobrado"
-          icon={WalletCards}
-        />
-        <Metric
           label="Turnos de hoy"
           value={String(data.summary.todayAppointments)}
-          note="Sin cancelados"
+          note={data.role === 'admin'
+            ? `${data.summary.openCashSessions} cajas abiertas`
+            : `${data.branches.length} sucursales asignadas`}
           icon={CalendarDays}
         />
-        {data.role === 'admin' ? (
-          <Metric
-            label="Comisiones pendientes"
-            value={formatArs(data.summary.pendingCommissions)}
-            note={`${data.summary.openCashSessions} cajas abiertas`}
-            icon={Scissors}
-          />
-        ) : (
-          <Metric
-            label="Cajas abiertas"
-            value={String(data.summary.openCashSessions)}
-            note={`${data.branches.length} sucursales asignadas`}
-            icon={Store}
-          />
-        )}
       </div>
     </section>
   )
@@ -260,6 +249,122 @@ function Metric({
         {note}
       </p>
     </div>
+  )
+}
+
+function TrendCard({ data, monthLabel }: { data: DashboardData; monthLabel: string }) {
+  const { monthProjection } = data.stats
+  const variance = monthProjection.varianceVsPreviousMonth
+  const isUp = variance !== null && variance >= 0
+
+  return (
+    <Card>
+      <CardHeader className="border-b">
+        <CardTitle className="text-xl">Tendencia de facturación</CardTitle>
+        <CardDescription>Últimos 30 días · proyección estadística, no es un monto garantizado.</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4 pt-6">
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+              Proyección · {monthLabel}
+            </p>
+            <p className="font-mono text-2xl font-semibold tabular-nums">
+              {formatArs(monthProjection.projected)}
+            </p>
+          </div>
+          {variance !== null ? (
+            <Badge variant={isUp ? 'success' : 'destructive'} className="gap-1">
+              {isUp ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}
+              {Math.abs(variance).toFixed(0)}% vs mes anterior
+            </Badge>
+          ) : null}
+        </div>
+        <RevenueTrendChart data={data.stats.revenueTrend} />
+      </CardContent>
+    </Card>
+  )
+}
+
+function OccupancyCard({ data }: { data: DashboardData }) {
+  const { noShowRate } = data.stats
+
+  return (
+    <Card>
+      <CardHeader className="border-b">
+        <CardTitle className="text-xl">Ocupación de agenda</CardTitle>
+        <CardDescription>Promedio de turnos por día, últimas 8 semanas.</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4 pt-6">
+        <WeekdayOccupancyChart data={data.stats.appointmentsByWeekday} />
+        <div className="flex items-center gap-2 rounded-xl bg-muted/65 p-3">
+          <UserX className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <p className="text-sm text-muted-foreground">
+            Ausentismo (no-show): <span className="font-mono font-semibold tabular-nums text-foreground">{noShowRate.toFixed(0)}%</span>
+            {' '}de los turnos, últimos 30 días.
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function RankingsCard({ data, monthLabel }: { data: DashboardData; monthLabel: string }) {
+  const { topBarbers, topServices } = data.stats
+
+  return (
+    <Card>
+      <CardHeader className="border-b">
+        <CardTitle className="text-xl">Rankings · {monthLabel}</CardTitle>
+        <CardDescription>Quién y qué generó más ingresos este mes.</CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-6 pt-6 lg:grid-cols-2">
+        {topBarbers.length > 0 ? (
+          <div>
+            <p className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+              <Trophy className="size-3.5" aria-hidden="true" />
+              Barberos
+            </p>
+            <ul className="flex flex-col gap-2">
+              {topBarbers.map((barber, index) => (
+                <li key={barber.id} className="flex items-center justify-between gap-3 rounded-xl bg-muted/50 px-3 py-2">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="font-mono text-xs text-muted-foreground">{index + 1}</span>
+                    <span className="truncate text-sm font-semibold">{barber.name}</span>
+                  </span>
+                  <span className="shrink-0 text-right">
+                    <span className="block font-mono text-sm font-semibold tabular-nums">{formatArs(barber.revenue)}</span>
+                    <span className="block text-xs text-muted-foreground">{barber.completedCuts} cortes</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {topServices.length > 0 ? (
+          <div>
+            <p className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+              <Scissors className="size-3.5" aria-hidden="true" />
+              Servicios
+            </p>
+            <ul className="flex flex-col gap-2">
+              {topServices.map((service, index) => (
+                <li key={service.id} className="flex items-center justify-between gap-3 rounded-xl bg-muted/50 px-3 py-2">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="font-mono text-xs text-muted-foreground">{index + 1}</span>
+                    <span className="truncate text-sm font-semibold">{service.name}</span>
+                  </span>
+                  <span className="shrink-0 text-right">
+                    <span className="block font-mono text-sm font-semibold tabular-nums">{formatArs(service.revenue)}</span>
+                    <span className="block text-xs text-muted-foreground">{service.count} vendidos</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
   )
 }
 
