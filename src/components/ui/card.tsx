@@ -16,7 +16,7 @@ function Card({
       className={cn(
         "group/card flex flex-col gap-4 overflow-hidden rounded-xl bg-card py-4 text-sm text-card-foreground has-data-[slot=card-footer]:pb-0 has-[>img:first-child]:pt-0 data-[size=sm]:gap-3 data-[size=sm]:py-3 data-[size=sm]:has-data-[slot=card-footer]:pb-0 *:[img:first-child]:rounded-t-xl *:[img:last-child]:rounded-b-xl",
         elevated
-          ? "border border-transparent shadow-[0_2px_5px_rgba(43,32,10,0.07),0_14px_32px_-10px_rgba(43,32,10,0.24)]"
+          ? "border border-transparent shadow-[0_2px_8px_rgba(0,0,0,0.35),0_14px_32px_-10px_rgba(0,0,0,0.5)]"
           : "border border-border",
         className
       )}

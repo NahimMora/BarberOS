@@ -93,7 +93,7 @@ export function MobileNavigation({ role }: { role: Role }) {
   )
 
   return (
-    <nav className="fixed inset-x-3 bottom-3 z-40 flex min-h-16 items-stretch justify-around rounded-3xl border border-border/70 bg-card/95 p-1.5 shadow-[0_2px_5px_rgba(43,32,10,0.07),0_14px_32px_-10px_rgba(43,32,10,0.24)] backdrop-blur-xl md:hidden">
+    <nav className="fixed inset-x-3 bottom-3 z-40 flex min-h-16 items-stretch justify-around rounded-3xl border border-border/70 bg-card/95 p-1.5 shadow-[0_8px_24px_-8px_rgba(0,0,0,0.6)] backdrop-blur-xl md:hidden">
       {visible.map((item) => {
         const Icon = item.icon
         const active = pathname === item.href || pathname.startsWith(`${item.href}/`)
