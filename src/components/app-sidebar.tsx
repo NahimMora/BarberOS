@@ -13,7 +13,6 @@ import {
   WalletCards,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { BrandMark } from '@/components/brand-mark'
 import { cn } from '@/lib/utils'
 
 type Role = 'admin' | 'receptionist' | 'barber'
@@ -42,9 +41,6 @@ export function AppSidebar({ role }: { role: Role }) {
 
   return (
     <aside className="hidden h-dvh w-62 shrink-0 flex-col border-r border-sidebar-border bg-sidebar px-4 py-5 text-sidebar-foreground md:sticky md:top-0 md:flex">
-      <div className="mb-8 px-2">
-        <BrandMark />
-      </div>
       <p className="mb-2 px-3 text-[0.65rem] font-bold uppercase tracking-wide text-sidebar-foreground/45">
         Espacio de trabajo
       </p>
@@ -76,12 +72,6 @@ export function AppSidebar({ role }: { role: Role }) {
           )
         })}
       </nav>
-      <div className="mt-auto rounded-xl border border-sidebar-border bg-sidebar-accent/50 p-3">
-        <p className="text-xs font-semibold">Operación protegida</p>
-        <p className="mt-1 text-[0.68rem] leading-4 text-sidebar-foreground/55">
-          Roles y sucursales se validan también en el servidor.
-        </p>
-      </div>
     </aside>
   )
 }
