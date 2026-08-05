@@ -2,13 +2,13 @@
 
 ## Direction
 
-BarberOS uses a **Barbershop Dark** visual language: a warm, low-lit shop
-floor — leather, brass, and a single red barber-pole stripe against a dark
-espresso canvas — instead of a bright, formal SaaS dashboard. It replaces the
-earlier **Soft Studio** direction (near-white canvas, warm-green primary),
-which is gone from the app entirely: there is no light mode or toggle, this
-is the one committed direction. The interface still exists to make four jobs
-fast and trustworthy:
+BarberOS uses a **Barber Pole** visual language: black canvas, white ink, a
+blue primary and a red destructive/accent — the literal colors of a barber
+pole — instead of a bright, formal SaaS dashboard. It replaces both the
+earlier **Soft Studio** direction (near-white canvas, warm-green primary) and
+a first, since-corrected dark pass that used a brass/gold accent: there is no
+light mode or toggle, this is the one committed direction. The interface
+still exists to make four jobs fast and trustworthy:
 
 1. Schedule
 2. Charge
@@ -28,10 +28,11 @@ color direction changed.
 
 BarberOS and Escuela SaaS (a separate academy-management app, same author)
 were aligned on a few concrete conventions while BarberOS was still light
-(BarberOS in its own warm green, Escuela SaaS in blue). The Barbershop Dark
-pass below moved BarberOS's color direction (dark canvas, brass primary,
-red stripe) without touching Escuela SaaS — the family resemblance on color
-is stale until Escuela SaaS is revisited; the structural conventions listed
+(BarberOS in its own warm green, Escuela SaaS in blue). The Barber Pole pass
+below moved BarberOS's color direction (black canvas, blue primary, red
+accent — coincidentally now sharing the blue family with Escuela SaaS,
+unintentionally) without touching Escuela SaaS — the family resemblance on
+color is incidental, not a deliberate re-alignment; the structural conventions listed
 below (table headers, page-title weight, status badges, role popover, form
 corners) are unaffected and still hold. This was a deliberate, scoped
 alignment of a few concrete conventions, not a shared codebase or component
@@ -77,37 +78,40 @@ throughout. What was aligned:
 
 ### Color
 
-> **Barbershop Dark pass:** replaces the Soft Studio near-white palette
-> entirely. There is a single theme (dark) — no `:root`/`.dark` split, no
-> toggle. The `.dark` class is applied statically on `<html>`
-> (`src/app/layout.tsx`) purely so shadcn/ui's built-in `dark:` utility
-> refinements always apply. This pass only touched color tokens; it does
-> not resolve dashboard density, hierarchy, or spacing — that is a separate
-> concern.
+> **Barber pole pass (corrige la pasada "Barbershop Dark" anterior):** el
+> primero intento de tema oscuro usó un acento dorado/latón. Pedido
+> explícito de corrección: la paleta tiene que leerse literalmente como un
+> barber pole — negro, blanco, azul y rojo. Sigue siendo un solo tema
+> (dark) — no `:root`/`.dark` split, no toggle. El `.dark` se aplica fijo en
+> `<html>` (`src/app/layout.tsx`) solo para que los ajustes `dark:` de
+> shadcn/ui se apliquen siempre.
 
-- **Background (canvas):** warm espresso, almost black,
-  `oklch(0.16 0.02 55)` — never cool gray or pure black.
-- **Card/surface:** one step lighter with the same warm tint,
-  `oklch(0.205 0.024 52)` — a clear lift off the canvas without reading as
-  a hard, cold panel.
-- **Ink (foreground):** warm off-white, `oklch(0.93 0.015 85)` — never pure
-  white, keeps the "worn paper under warm light" feel.
-- **Primary:** brass/gold, `oklch(0.74 0.11 75)` — the barbershop metal
-  accent, used for primary actions and trusted state. Replaces the previous
-  warm-green primary as the brand invariant.
-- **Accent:** warm amber-brown, `oklch(0.32 0.045 65)`, used sparingly for
-  hover/focus/selected states in menus and selects.
-- **Destructive:** barbershop red, `oklch(0.58 0.19 25)`, reserved for
-  cancellation, voiding, and other irreversible actions — the same family as
-  the stripe accent below, slightly more subdued.
-- **Success / warning / info:** semantic tokens only — never arbitrary
-  hardcoded utility colors in feature components.
-- **Sidebar (desktop):** darker still than the canvas,
-  `oklch(0.12 0.018 50)`, so it reads as a distinct, calmer surface rather
-  than an inverted card — the one part of the app that was already dark
-  before this pass, now blending naturally with everything else.
-- **Stripe accent (barber pole):** `oklch(0.6 0.2 24)`, a vivid red — the
-  one loud color in the app, confined to `PageHeader`'s `.stripe-accent`.
+- **Background (canvas):** negro neutro, casi sin matiz,
+  `oklch(0.12 0.005 260)`.
+- **Card/surface:** un escalón más claro, mismo negro neutro,
+  `oklch(0.17 0.008 258)` — lift claro sobre el canvas sin ser un panel frío.
+- **Ink (foreground):** blanco, `oklch(0.97 0.002 255)` — blanco real, no
+  hueso ni marfil.
+- **Primary:** azul barber pole, `oklch(0.55 0.19 258)`, usado en acciones
+  primarias y estado de confianza. Reemplaza el dorado/latón de la pasada
+  anterior — es el color de acción de la marca.
+- **Accent:** azul apagado, `oklch(0.3 0.06 258)`, usado con moderación para
+  hover/focus/selected en menús y selects.
+- **Destructive:** rojo barber pole, `oklch(0.58 0.19 25)`, reservado para
+  cancelación, anulación y otras acciones irreversibles — misma familia que
+  el rayado del stripe accent, un poco más apagado.
+- **Success / warning / info:** tokens semánticos únicamente — nunca
+  colores de utilidad hardcodeados en componentes de feature. `info` usa un
+  celeste (`oklch(0.68 0.09 210)`) deliberadamente distinto del azul
+  primario, para no confundir "informativo" con "acción primaria".
+- **Sidebar (desktop):** más oscuro que el canvas, casi negro puro
+  (`oklch(0.08 0.004 260)`), para leerse como una superficie distinta y más
+  calma, no como una card invertida.
+- **Stripe accent (barber pole):** ahora es el rayado real de tres colores
+  — rojo (`--stripe-red`), blanco (`--stripe-white`) y azul
+  (`--stripe-blue`, igual al primario) en diagonal, `.stripe-accent` en
+  `globals.css`. El único lugar "ruidoso" de la app, confinado a
+  `PageHeader`.
 
 All of the above are CSS custom properties in `src/app/globals.css`
 (`--background`, `--card`, `--primary`, `--sidebar*`, etc.), re-exposed as

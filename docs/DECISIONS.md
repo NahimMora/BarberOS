@@ -5,6 +5,30 @@
 > duplica `AGENTS.md`/`docs/PRODUCT.md` (fuente de verdad de alcance del
 > producto) — esto es el "por qué" de decisiones puntuales.
 
+## 2026-08-04 — Paleta corregida a "Barber Pole" (negro/blanco/azul/rojo), reemplaza el dorado/latón
+
+**Decisión:** el primario deja de ser dorado/latón y pasa a ser azul
+(`oklch(0.55 0.19 258)`); el fondo pasa de espresso cálido a negro neutro
+(`oklch(0.12 0.005 260)`); el texto pasa de blanco hueso cálido a blanco
+real (`oklch(0.97 0.002 255)`). El rayado de `.stripe-accent`
+(`PageHeader`) pasa de un bicolor rojo/card a un barber pole real de tres
+colores: rojo, blanco y azul en diagonal.
+
+**Motivo:** corrección explícita del usuario — la pasada "Barbershop
+Dark" (más arriba en este mismo día) interpretó "de barbería" como
+cuero/latón; el usuario aclaró que quería los colores literales del
+barber pole: blanco, azul, rojo y negro.
+
+**Alternativas rechazadas:** mantener el dorado como acento secundario
+junto al azul — se descartó para no diluir la corrección explícita; usar
+un azul y un rojo saturados iguales entre sí — se ajustó el rojo
+ligeramente más subido que el azul para que `destructive` siga leyendo
+como "alerta" primero y "marca" segundo.
+
+**Consecuencias:** `info` (semántico) se re-tonalizó a celeste distinto
+del azul primario para no confundir "informativo" con "acción primaria"
+en badges de estado. `docs/UI_STYLE_GUIDE.md` § Color actualizado.
+
 ## 2026-08-04 — Notificaciones push web para barberos (nuevo alcance activo)
 
 **Decisión:** se agrega un sistema de notificaciones push del navegador
